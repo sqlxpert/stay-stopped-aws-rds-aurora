@@ -1,0 +1,20 @@
+---
+# Stop AWS RDS and Aurora databases after the forced 7-day start
+# github.com/sqlxpert/stay-stopped-aws-rds-aurora GPLv3 Copyright Paul Marcelin
+
+extends: default
+
+rules:
+  braces:
+    level: warning
+    max-spaces-inside: 1  # AWS CloudFormation convention
+  brackets:
+    level: warning
+    max-spaces-inside: 1  # AWS CloudFormation convention
+  line-length:
+    max: 79
+    level: warning
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+    # No suitable option for some unavoidably long lines, like ones containing
+    # ARNs. Leave warning in place as a reminder for other cases.

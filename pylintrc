@@ -1,0 +1,29 @@
+# Stop AWS RDS and Aurora databases after the forced 7-day start
+# github.com/sqlxpert/stay-stopped-aws-rds-aurora GPLv3 Copyright Paul Marcelin
+
+[MAIN]
+
+load-plugins=pylint.extensions.no_self_use
+
+[MESSAGES CONTROL]
+
+disable=fixme,locally-disabled
+
+[REPORTS]
+
+reports=no
+
+[VARIABLES]
+
+max-locals=25
+
+[BASIC]
+
+argument-rgx=[a-z_][a-z0-9_]{1,30}$
+variable-rgx=[a-z_][a-z0-9_]{1,30}$
+
+[FORMAT]
+
+indent-string="  "
+indent-after-paren=2
+max-line-length=80
