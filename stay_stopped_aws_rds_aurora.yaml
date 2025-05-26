@@ -1,0 +1,982 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: |-
+  Stop AWS RDS and Aurora databases after the forced 7-day start.
+
+  github.com/sqlxpert/stay-stopped-aws-rds-aurora GPLv3 Copyright Paul Marcelin
+
+Parameters:
+
+  PlaceholderSuggestedStackName:
+    Type: String
+    Default: "StayStoppedRdsAurora"
+
+  PlaceholderHelp:
+    Type: String
+    Default: "github.com/sqlxpert/stay-stopped-aws-rds-aurora"
+
+  Enable:
+    Type: String
+    Description: >-
+      Whether to stop databases forcibly started after 7 days
+    Default: "true"
+    AllowedValues:
+      - "false"
+      - "true"
+
+  PlaceholderAdvancedParameters:
+    Type: String
+    Default: ""
+    AllowedValues:
+      - ""
+
+  AddTestEvents:
+    Type: String
+    Description: >-
+      Whether to also accept database stop and non-forced database start
+      events, for testing. Do not leave this set to "true", because it
+      prevents RDS database instances and Aurora database clusters from
+      staying on after they are started.
+    Default: "false"
+    AllowedValues:
+      - "false"
+      - "true"
+
+  QueueVisibilityTimeoutSecs:
+    Type: Number
+    Description: >-
+      How many seconds between attempts to stop a database. This must be
+      greater than LambdaFnTimeoutSecs . The default, 540 seconds or 9
+      minutes, allows a second stop attempt as late as possible within the
+      10-minute minimum billing period after a database starts. Reduce for
+      for testing.
+    Default: 540
+
+  QueueMaxReceiveCount:
+    Type: Number
+    Description: >-
+      How many times to try stopping a database. This number multiplied by
+      QueueVisibilityTimeoutSecs is the maximum time allowed for database
+      operations (mainly starting and stopping); after that, no error is
+      logged but the forced database start event is moved to the error queue.
+      The default, 160 times, multiplied by the QueueVisibilityTimeoutSecs
+      default, 540 seconds or 9 minutes, allows 24 hours.
+    MinValue: 1
+    Default: 160
+
+  ErrorQueueMessageRetentionPeriodSecs:
+    Type: Number
+    Description: >-
+      How many seconds to keep messages (in the error queue). This must be
+      greater than QueueMaxReceiveCount * QueueVisibilityTimeoutSecs . For
+      consistency, set this to LogsRetainDays * 86400 or the next largest
+      value allowed by both CloudWatch Logs and SQS. The default, 604800 , is
+      7 days. See MessageRetentionPeriod in
+      https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_SetQueueAttributes.html#API_SetQueueAttributes_RequestParameters
+    Default: 604800
+
+  QueueMessageBytesMax:
+    Type: Number
+    Description: >-
+      The maximum number of bytes in a forced database start event and an AWS
+      Lambda function trigger event
+    MinValue: 1024
+    Default: 16384  # 16 KiB (larger than expected)
+    MaxValue: 262144  # 256 KiB
+
+  SqsKmsKey:
+    Type: String
+    Description: >-
+      If this is blank, default non-KMS SQS encryption applies. To use the
+      AWS-managed key (which does not support key policy restrictions, or
+      cross-region or cross-account usage), specify "alias/aws/sqs". To use a
+      custom key, specify "ACCOUNT:key/KEY_ID". Whether the custom key is a
+      single-region key, a multi-region key primary, or a multi-region key
+      replica, it must be in the same region where you are creating this
+      stack. Even if the custom key is in the same AWS account as this stack,
+      you must update the key policy to allow usage by EventBridge and SQS.
+      See
+      https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-targets.html#targets-permissions
+      and
+      https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-key-management.html#compatibility-with-aws-services
+      . For a StackSet, if you wish to use a custom key, it must be
+      multi-region ("mrk-" prefix in the KEY_ID), and a replica (or the
+      primary key itself) must exist in every target region.
+    Default: ""
+
+  LambdaFnReservedConcurrentExecutions:
+    Type: Number
+    Description: >-
+      How many database stop operations can definitely occur in parallel. To
+      decline access to AWS Lambda reserved concurrency, set this to -1. See
+      https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html#configuration-concurrency-reserved
+    MinValue: -1
+    Default: -1
+
+  LambdaFnMaximumConcurrency:
+    Type: Number
+    Description: >-
+      How many database stop operations may occur in parallel. The minimum is
+      2. If you set LambdaFnReservedConcurrentExecutions to 2 or more, set
+      this no larger. See
+      https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-scaling.html#events-sqs-max-concurrency
+    MinValue: 2
+    Default: 2
+
+  LambdaFnRoleAttachLocalPolicyName:
+    Type: String
+    Description: >-
+      The name of a customer-managed IAM policy to attach to the function
+      role. By including "Effect": "Deny" statements, you could, for example,
+      prevent the function from ever stopping production databases.
+      Specify only the name, not the ARN.
+      For a StackSet, the policy must exist, and have exactly the same name,
+      in every target AWS account.
+      Policies are account-wide, not regional.
+    Default: ""
+
+  LambdaFnMemoryMB:
+    Type: Number
+    Description: >-
+      How many megabytes of memory to allocate. Increase this only in case of
+      out-of-memory errors.
+    Default: 128
+
+  LambdaFnTimeoutSecs:
+    Type: Number
+    Description: >-
+      How many seconds before execution is canceled. Increase this only in
+      case of time-out errors.
+    Default: 30
+
+  LogsRetainDays:
+    Type: Number
+    Description: >-
+      How many days to keep log entries. See retentionInDays in
+      http://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutRetentionPolicy.html
+    Default: 7
+
+  LogLevel:
+    Type: String
+    Description: >-
+      The level of detail in the log. See
+      https://docs.python.org/3/library/logging.html#levels
+    Default: ERROR
+    AllowedValues:
+      - CRITICAL
+      - ERROR
+      - WARNING
+      - INFO
+      - DEBUG
+      - NOTSET
+
+  CloudWatchLogsKmsKey:
+    Type: String
+    Description: >-
+      If this is blank, default non-KMS CloudWatch Logs encryption applies. To
+      use a KMS key, which must be a custom key, specify "ACCOUNT:key/KEY_ID".
+      Whether the custom key is a single-region key, a multi-region key
+      primary, or a multi-region key replica, it must be in the same region
+      where you are creating this stack. Even if the custom key is in the same
+      AWS account as this stack, you must update the key policy to allow usage
+      by CloudWatch Logs. See
+      https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html#cmk-permissions
+      . For a StackSet, the custom key must be multi-region ("mrk-" prefix in
+      the KEY_ID), and a replica (or the primary key itself) must exist in
+      every target region.
+    Default: ""
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: For Reference
+        Parameters:
+          - PlaceholderSuggestedStackName
+          - PlaceholderHelp
+      - Label:
+          default: Essential
+        Parameters:
+          - Enable
+      - Label:
+          default: Advanced...
+        Parameters:
+          - PlaceholderAdvancedParameters
+      - Label:
+          default: Testing
+        Parameters:
+          - AddTestEvents
+      - Label:
+          default: SQS queues for forced database start events and errors
+        Parameters:
+          - QueueVisibilityTimeoutSecs
+          - QueueMaxReceiveCount
+          - ErrorQueueMessageRetentionPeriodSecs
+          - QueueMessageBytesMax
+          - SqsKmsKey
+      - Label:
+          default: AWS Lambda function to stop databases
+        Parameters:
+          - LambdaFnReservedConcurrentExecutions
+          - LambdaFnMaximumConcurrency
+          - LambdaFnRoleAttachLocalPolicyName
+          - LambdaFnMemoryMB
+          - LambdaFnTimeoutSecs
+      - Label:
+          default: CloudWatch log for AWS Lambda function
+        Parameters:
+          - LogsRetainDays
+          - LogLevel
+          - CloudWatchLogsKmsKey
+    ParameterLabels:
+      PlaceholderHelp:
+        default: For help with this stack, see
+      PlaceholderSuggestedStackName:
+        default: Suggested stack name
+      Enable:
+        default: Enable?
+      PlaceholderAdvancedParameters:
+        default: Do not change the parameters below, unless necessary!
+      AddTestEvents:
+        default: Add test events?
+      QueueVisibilityTimeoutSecs:
+        default: Seconds between attempts to stop a database
+      QueueMaxReceiveCount:
+        default: How many times to try stopping a database
+      ErrorQueueMessageRetentionPeriodSecs:
+        default: Seconds before deleting a message
+      QueueMessageBytesMax:
+        default: Maximum bytes in a message
+      SqsKmsKey:
+        default: KMS encryption key
+      LambdaFnReservedConcurrentExecutions:
+        default: Number of reserved parallel operations
+      LambdaFnMaximumConcurrency:
+        default: Maximum number of parallel operations
+      LambdaFnRoleAttachLocalPolicyName:
+        default: Name of local IAM policy to attach to role
+      LambdaFnMemoryMB:
+        default: Megabytes of memory
+      LambdaFnTimeoutSecs:
+        default: Seconds before timeout
+      LogsRetainDays:
+        default: Days before deleting
+      LogLevel:
+        default: Level of detail
+      CloudWatchLogsKmsKey:
+        default: KMS encryption key
+
+Conditions:
+
+  EnableTrue: !Equals [ !Ref Enable, "true" ]
+
+  AddTestEventsTrue: !Equals [ !Ref AddTestEvents, "true" ]
+
+  SqsKmsKeyBlank: !Equals [ !Ref SqsKmsKey, "" ]
+  SqsKmsKeyCustom:
+    Fn::And:
+      - !Not [ !Condition SqsKmsKeyBlank ]
+      - !Not [ !Equals [ !Ref SqsKmsKey, "alias/aws/sqs" ] ]
+
+  LambdaFnRoleAttachLocalPolicyNameBlank:
+    !Equals [ !Ref LambdaFnRoleAttachLocalPolicyName, "" ]
+
+  LambdaFnReservedConcurrentExecutionsOff:
+    !Equals [ !Ref LambdaFnReservedConcurrentExecutions, -1 ]
+
+  CloudWatchLogsKmsKeyBlank: !Equals [ !Ref CloudWatchLogsKmsKey, "" ]
+
+Resources:
+
+  # Administrator: Restrict iam:PassRole to prevent use with arbitrary AWS
+  # Lambda functions.
+  LambdaFnRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: !Sub "For ${AWS::Region} region"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - Fn::If:
+            - LambdaFnRoleAttachLocalPolicyNameBlank
+            - !Ref AWS::NoValue
+            - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${LambdaFnRoleAttachLocalPolicyName}"
+      Policies:
+
+        # In-line policies apply only to one role, which can only be assumed
+        # by AWS Lambda functions. Separate, "managed" policies could be
+        # attached to other roles or users, allowing permission escalation.
+
+        - PolicyName: CloudWatchLogsCreateLogGroupIfDeleted
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                Resource: !GetAtt LambdaFnLogGrp.Arn
+
+        - PolicyName: CloudWatchLogsWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LambdaFnLogGrp}:log-stream:*"
+                # !GetAtt LogGroup.Arn ends with :* instead of allowing us to
+                # append :log-stream:* to make a log stream ARN
+
+        - PolicyName: RdsRead
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:DescribeDBClusters
+                Resource: "*"
+              - Effect: Allow
+                Action: rds:ListTagsForResource
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:*"
+                  - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:cluster:*"
+
+        - PolicyName: RdsWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:StopDBInstance
+                  - rds:StopDBCluster
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:*"
+                  - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:cluster:*"
+
+        - Fn::If:
+            - SqsKmsKeyCustom
+            - PolicyName: SqsKmsDecryptNoteComplementsQueuePolicy
+              PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                  - Effect: Allow
+                    Action:
+                      # https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-key-management.html#receive-from-encrypted-queue
+                      - kms:Decrypt
+                    Resource: !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${SqsKmsKey}"
+                    Condition:
+                      StringEquals: { "kms:ViaService": !Sub "sqs.${AWS::Region}.amazonaws.com" }
+            - !Ref AWS::NoValue
+
+  QueuePol:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [ !Ref Queue ]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: RequireTls
+            Effect: Deny
+            Principal: "*"
+            Action: sqs:*
+            Resource: "*"
+            Condition:
+              Bool: { aws:SecureTransport: "false" }
+          - Effect: Allow
+            Principal: "*"
+            Action: sqs:GetQueueAttributes
+            Resource: "*"
+          - Sid:
+              Fn::If:
+                - SqsKmsKeyCustom
+                - SourceEventRulesNoteKeyPolicyNeedsEventBridgeSqsKmsEncrypt
+                - SourceEventRules
+            Effect: Allow
+            Principal: { Service: events.amazonaws.com }
+            Action: sqs:SendMessage
+            Resource: "*"
+            Condition:
+              ArnEquals:
+                "aws:SourceArn":
+                  - !GetAtt AuroraDbForcedStartToQueueRule.Arn
+                  - !GetAtt RdsDbForcedStartToQueueRule.Arn
+          - Sid: ExclusiveSource
+            Effect: Deny
+            Principal: "*"
+            Action: sqs:SendMessage
+            Resource: "*"
+            Condition:
+              ArnNotEquals:
+                "aws:SourceArn":
+                  - !GetAtt AuroraDbForcedStartToQueueRule.Arn
+                  - !GetAtt RdsDbForcedStartToQueueRule.Arn
+          - Sid:
+              Fn::If:
+                - SqsKmsKeyCustom
+                - TargetLambdaFnRoleNoteNeedsSqsKmsDecrypt
+                - TargetLambdaFnRole
+            Effect: Allow
+            Principal: "*"
+            Action:
+              - sqs:ChangeMessageVisibility
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+            Resource: "*"
+            Condition:
+              ArnEquals: { aws:PrincipalArn: !GetAtt LambdaFnRole.Arn }
+          - Sid:
+              Fn::If:
+                - SqsKmsKeyCustom
+                - TargetDeadLetterQueueNoteKeyPolicyNeedsSqsKmsDecrypt
+                - TargetDeadLetterQueue
+            Effect: Allow
+            Principal: "*"
+            Action:
+              - sqs:ChangeMessageVisibility
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+            Resource: "*"
+            Condition:
+              ArnEquals: { aws:SourceArn: !GetAtt ErrorQueue.Arn }
+          - Sid: ExclusiveTargets
+            Effect: Deny
+            Principal: "*"
+            Action:
+              - sqs:ChangeMessageVisibility
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+            Resource: "*"
+            Condition:
+              ArnNotEquals:
+                aws:PrincipalArn:
+                  - !GetAtt LambdaFnRole.Arn
+                aws:SourceArn:
+                  - !GetAtt ErrorQueue.Arn
+
+  ErrorQueuePol:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [ !Ref ErrorQueue ]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: RequireTls
+            Effect: Deny
+            Principal: "*"
+            Action: sqs:*
+            Resource: "*"
+            Condition:
+              Bool: { aws:SecureTransport: "false" }
+          - Effect: Allow
+            Principal: "*"
+            Action: sqs:GetQueueAttributes
+            Resource: "*"
+          - Sid:
+              Fn::If:
+                - SqsKmsKeyCustom
+                - SourceEventRulesNoteKeyPolicyNeedsEventBridgeSqsKmsEncrypt
+                - SourceEventRules
+            Effect: Allow
+            Principal: { Service: events.amazonaws.com }
+            Action: sqs:SendMessage
+            Resource: "*"
+            Condition:
+              ArnEquals:
+                "aws:SourceArn":
+                  - !GetAtt AuroraDbForcedStartToQueueRule.Arn
+                  - !GetAtt RdsDbForcedStartToQueueRule.Arn
+          - Sid:
+              Fn::If:
+                - SqsKmsKeyCustom
+                - SourceQueueNoteKeyPolicyNeedsSqsKmsEncrypt
+                - SourceQueue
+            Effect: Allow
+            Principal: "*"
+            Action: sqs:SendMessage
+            Resource: "*"
+            Condition:
+              ArnEquals:
+                "aws:SourceArn":
+                  - !GetAtt Queue.Arn
+          - Sid: ExclusiveSources
+            Effect: Deny
+            Principal: "*"
+            Action: sqs:SendMessage
+            Resource: "*"
+            Condition:
+              ArnNotEquals:
+                "aws:SourceArn":
+                  - !GetAtt AuroraDbForcedStartToQueueRule.Arn
+                  - !GetAtt RdsDbForcedStartToQueueRule.Arn
+                  - !GetAtt Queue.Arn
+
+  # Administrator: Block other invocation mechanisms
+  LambdaFnInvokeLambdaPerm:
+    Type: AWS::Lambda::Permission
+    DependsOn: QueuePol
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LambdaFn
+      Principal: sqs.amazonaws.com
+      SourceArn: !GetAtt Queue.Arn
+
+  AuroraDbForcedStartToQueueRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description:
+        Fn::If:
+          - AddTestEventsTrue
+          - !Sub >-
+              Forced Aurora database cluster start after 7 days
+              (RDS-EVENT-0153), plus stop (RDS-EVENT-0150) and non-forced
+              start (RDS-EVENT-0151) for testing, to ${Queue.QueueName}
+          - !Sub >-
+              Forced Aurora database cluster start after 7 days, to
+              ${Queue.QueueName}
+      EventPattern:
+        # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster
+        # "DB cluster is being started due to it exceeding the maximum allowed
+        # time being stopped."
+        source: [ aws.rds ]
+        detail-type: [ RDS DB Cluster Event ]
+        detail:
+          EventID:
+            - RDS-EVENT-0153
+            # Non-forced start:
+            - !If [ AddTestEventsTrue, RDS-EVENT-0151, !Ref AWS::NoValue ]
+            # Stop:
+            - !If [ AddTestEventsTrue, RDS-EVENT-0150, !Ref AWS::NoValue ]
+          SourceType: [ CLUSTER ]
+          SourceIdentifier:
+            - anything-but:
+                - ""
+                # https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1378
+                # - null
+        version: [ "0" ]
+      Targets:
+        - Id: !GetAtt Queue.QueueName
+          Arn: !GetAtt Queue.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 10
+            MaximumEventAgeInSeconds: 300  # 5 minutes
+          DeadLetterConfig: { Arn: !GetAtt ErrorQueue.Arn }
+      State: !If [ EnableTrue, ENABLED, DISABLED ]
+
+  RdsDbForcedStartToQueueRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description:
+        Fn::If:
+          - AddTestEventsTrue
+          - !Sub >-
+              Forced RDS database instance start after 7 days
+              (RDS-EVENT-0154), plus stop (RDS-EVENT-0087) and non-forced
+              start (RDS-EVENT-0088) for testing, to ${Queue.QueueName}
+          - !Sub >-
+              Forced RDS database instance start after 7 days, to
+              ${Queue.QueueName}
+      EventPattern:
+        # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
+        # "DB instance is being started due to it exceeding the maximum
+        # allowed time being stopped."
+        source: [ aws.rds ]
+        detail-type: [ RDS DB Instance Event ]
+        detail:
+          EventID:
+            - RDS-EVENT-0154
+            # Non-forced start:
+            - !If [ AddTestEventsTrue, RDS-EVENT-0088, !Ref AWS::NoValue ]
+            # Stop:
+            - !If [ AddTestEventsTrue, RDS-EVENT-0087, !Ref AWS::NoValue ]
+          SourceType: [ DB_INSTANCE ]
+          SourceIdentifier:
+            - anything-but:
+                - ""
+                # https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1378
+                # - null
+        version: [ "0" ]
+      Targets:
+        - Id: !GetAtt Queue.QueueName
+          Arn: !GetAtt Queue.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 10
+            MaximumEventAgeInSeconds: 300  # 5 minutes
+          DeadLetterConfig: { Arn: !GetAtt ErrorQueue.Arn }
+      State: !If [ EnableTrue, ENABLED, DISABLED ]
+
+  Queue:
+    Type: AWS::SQS::Queue
+    Properties:
+      DelaySeconds: 0
+      SqsManagedSseEnabled: !If [ SqsKmsKeyBlank, true, false ]
+      KmsMasterKeyId:
+        Fn::If:
+          - SqsKmsKeyBlank
+          - !Ref AWS::NoValue
+          - Fn::If:
+              - SqsKmsKeyCustom
+              - !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${SqsKmsKey}"
+              - !Ref SqsKmsKey
+      KmsDataKeyReusePeriodSeconds:
+        !If [ SqsKmsKeyBlank, !Ref AWS::NoValue, 86400 ]  # seconds (24 hours)
+      MaximumMessageSize: !Ref QueueMessageBytesMax
+      MessageRetentionPeriod: !Ref ErrorQueueMessageRetentionPeriodSecs
+      ReceiveMessageWaitTimeSeconds: 20  # long polling (lowest cost)
+      VisibilityTimeout: !Ref QueueVisibilityTimeoutSecs
+      RedrivePolicy:
+        maxReceiveCount: !Ref QueueMaxReceiveCount
+        deadLetterTargetArn: !GetAtt ErrorQueue.Arn
+      RedriveAllowPolicy:
+        redrivePermission: denyAll
+
+  ErrorQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      DelaySeconds: 0
+      SqsManagedSseEnabled: !If [ SqsKmsKeyBlank, true, false ]
+      KmsMasterKeyId:
+        Fn::If:
+          - SqsKmsKeyBlank
+          - !Ref AWS::NoValue
+          - Fn::If:
+              - SqsKmsKeyCustom
+              - !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${SqsKmsKey}"
+              - !Ref SqsKmsKey
+      KmsDataKeyReusePeriodSeconds:
+        !If [ SqsKmsKeyBlank, !Ref AWS::NoValue, 86400 ]  # seconds (24 hours)
+      MessageRetentionPeriod: !Ref ErrorQueueMessageRetentionPeriodSecs
+      ReceiveMessageWaitTimeSeconds: 20  # long polling (lowest cost)
+      VisibilityTimeout: 0  # seconds; dead message retries don't make sense
+
+  LambdaFnLogGrp:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: !Ref LogsRetainDays
+      KmsKeyId:
+        Fn::If:
+          - CloudWatchLogsKmsKeyBlank
+          - !Ref AWS::NoValue
+          - !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${CloudWatchLogsKmsKey}"
+
+  QueueToLambdaFnMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    DependsOn: LambdaFnInvokeLambdaPerm
+    Properties:
+      EventSourceArn: !GetAtt Queue.Arn
+      MaximumBatchingWindowInSeconds: 20  # long polling (lowest cost)
+      BatchSize: 1
+      FunctionName: !GetAtt LambdaFn.Arn
+      ScalingConfig:
+        MaximumConcurrency: !Ref LambdaFnMaximumConcurrency
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
+      Enabled: !Ref Enable
+
+  LambdaFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt LambdaFnRole.Arn
+      ReservedConcurrentExecutions:
+        Fn::If:
+          - LambdaFnReservedConcurrentExecutionsOff
+          - !Ref AWS::NoValue
+          - !Ref LambdaFnReservedConcurrentExecutions
+      Timeout: !Ref LambdaFnTimeoutSecs
+      MemorySize: !Ref LambdaFnMemoryMB
+      LoggingConfig:
+        LogGroup: !Ref LambdaFnLogGrp
+        LogFormat: JSON
+        SystemLogLevel: WARN
+        ApplicationLogLevel: !Ref LogLevel
+      TracingConfig: { Mode: PassThrough }
+      Architectures:
+        - arm64
+      Runtime: python3.13
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: |
+          #!/usr/bin/env python3
+          """Stop AWS RDS and Aurora databases after the forced 7-day start
+
+          github.com/sqlxpert/stay-stopped-aws-rds-aurora GPLv3 Copyright Paul Marcelin
+          """
+
+          import logging
+          import json
+          import re
+          import botocore
+          import boto3
+
+          logger = logging.getLogger()
+          # Skip "credentials in environment" INFO message, unavoidable in AWS Lambda:
+          logging.getLogger("botocore").setLevel(logging.WARNING)
+
+
+          def log(entry_type, entry_value, log_level=logging.INFO):
+            """Emit a JSON-format log entry
+            """
+            entry_value_out = json.loads(json.dumps(entry_value, default=str))
+            # Avoids "Object of type datetime is not JSON serializable" in
+            # https://github.com/aws/aws-lambda-python-runtime-interface-client/blob/9efb462/awslambdaric/lambda_runtime_log_utils.py#L109-L135
+            #
+            # The JSON encoder in the AWS Lambda Python runtime isn't configured to
+            # serialize datatime values in responses returned by AWS's own Python SDK!
+            #
+            # Alternative considered:
+            # https://docs.powertools.aws.dev/lambda/python/latest/core/logger/
+
+            logger.log(
+              log_level, "", extra={"type": entry_type, "value": entry_value_out}
+            )
+
+
+          def op_log(event, op_method_name, op_kwargs, main_entry_value, log_level):
+            """Log Lambda function event, boto3 operation kwargs, response or exception
+
+            A response that preceded a downstream error can be logged at log_level
+            logging.ERROR instead of logging.INFO , or an expected exception can be
+            logged at logging.INFO instead of logging.ERROR .
+            """
+            if log_level > logging.INFO:
+              log("LAMBDA_EVENT", event, log_level)
+            log(f"KWARGS_{op_method_name.upper()}", op_kwargs, log_level)
+            main_entry_type = (
+              "EXCEPTION" if isinstance(main_entry_value, Exception) else "AWS_RESPONSE"
+            )
+            log(main_entry_type, main_entry_value, log_level)
+
+
+          # Use "status" except in the context of parsing an Aurora
+          # InvalidDBClusterStateFault error message, which refers to "state".
+
+          INVALID_DB_CLUSTER_STATE_RE = re.compile(
+            r"DbCluster \S+ is in (?P<db_cluster_state>\S+) state "
+          )
+
+
+          def extract_db_cluster_state(err_msg):
+            """Take an InvalidDBClusterStateFault error message, return cluster state
+
+            None indicates state not found
+            """
+            db_cluster_state_re_match = INVALID_DB_CLUSTER_STATE_RE.match(err_msg)
+            return (
+              db_cluster_state_re_match.db_cluster_state
+              if db_cluster_state_re_match else
+              None
+            )
+
+
+          def get_db_instance_status(event, describe_db_kwargs):
+            """Take describe_db_instances kwargs, return RDS database instance status
+
+            None indicates an error
+            """
+            db_instance_status = None
+
+            describe_db_method_name = "describe_db_instances"
+            describe_db_result = op_do(
+              event, describe_db_method_name, describe_db_kwargs, log_response=False
+            )
+            if not isinstance(describe_db_result, Exception):
+              db_instances = describe_db_result.get("DBInstances", [])
+              if len(db_instances) == 1:
+                db_instance_status = db_instances[0].get("DBInstanceStatus")
+              op_log(
+                event,
+                describe_db_method_name,
+                describe_db_kwargs,
+                describe_db_result,
+                logging.ERROR if db_instance_status is None else logging.INFO
+              )
+
+            return db_instance_status
+
+
+          def assess_db_status(db_status):
+            """Take database status, return log level and retry flag
+
+            Aurora database cluster:
+              https://docs.aws.amazon.com/en_us/AmazonRDS/latest/AuroraUserGuide/accessing-monitoring.html#Aurora.Status
+
+            RDS database instance:
+              https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/accessing-monitoring.html#Overview.DBInstance.Status
+            """
+            log_level = logging.ERROR
+            retry = False
+            if db_status is not None:
+              match db_status.lower():
+                # Unless noted, same status values (normalized to lower case) for
+                # Aurora database cluster and RDS database instance.
+
+                case "deleting" | "deleted" | "stopped":
+                  log_level = logging.INFO
+
+                case (
+                    "starting"
+                  | "stopping"  # To check for successful completion
+                  | "backing-up"
+                  | "maintenance"
+                  | "modifying"
+                  | "renaming"
+                  | "resetting-master-credentials"
+                  | "storage-optimization"
+                  | "upgrading"
+
+                  # Aurora database cluster only:
+                  | "failing-over"
+                  | "update-iam-db-auth"
+
+                  # RDS database instance only:
+                  | "configuring-enhanced-monitoring"
+                  | "configuring-iam-database-auth"
+                  | "configuring-log-exports"
+                  | "rebooting"
+                  | "storage-config-upgrade"
+                  | "storage-initialization"
+                ):
+                  log_level = logging.INFO
+                  retry = True
+                  # Also monitor error (dead letter) queue; database will not be stopped
+                  # if operations take longer than VisibilityTimeout * maxReceiveCount
+                  # (SQS main queue properties in CloudFormation).
+
+            return (log_level, retry)
+
+
+          def assess_stop_db_exception(event, misc_exception, describe_db_kwargs):
+            """Take a boto3 exception, return log level and retry flag
+
+            ClientError is general but statically-defined, making comparison
+            easier than for RDS-specific but dynamically-defined exceptions
+            like InvalidDBClusterStateFault and InvalidDBInstanceStateFault .
+
+            https://boto3.amazonaws.com/v1/documentation/api/latest/guide/error-handling.html#parsing-error-responses-and-catching-exceptions-from-aws-services
+            """
+            log_level = logging.ERROR
+            retry = False
+            if isinstance(misc_exception, botocore.exceptions.ClientError):
+              err_dict = getattr(misc_exception, "response", {}).get("Error", {})
+              match err_dict.get("Code"):
+
+                case "InvalidDBClusterStateFault":
+                  db_status = extract_db_cluster_state(err_dict.get("Message", ""))
+                  (log_level, retry) = assess_db_status(db_status)
+
+                case "InvalidDBInstanceState":  # "Fault" suffix is missing here!
+                  db_status = get_db_instance_status(event, describe_db_kwargs)
+                  (log_level, retry) = assess_db_status(db_status)
+
+            return (log_level, retry)
+
+
+          rds_client = None  # pylint: disable=invalid-name
+
+
+          def rds_client_get():
+            """Return a boto3 RDS client, creating it if needed
+
+            boto3 method references can only be resolved at run-time, against an
+            instance of an AWS service's Client class.
+            http://boto3.readthedocs.io/en/latest/guide/events.html#extensibility-guide
+
+            Alternatives considered:
+            https://github.com/boto/boto3/issues/3197#issue-1175578228
+            https://github.com/aws-samples/boto-session-manager-project
+            """
+            global rds_client  # pylint: disable=global-statement
+            if not rds_client:
+              rds_client = boto3.client(
+                "rds", config=botocore.config.Config(retries={"mode": "standard"})
+              )
+            return rds_client
+
+
+          def op_do(
+            event, op_method_name, op_kwargs, log_response=True, log_exception=True
+          ):
+            """Call a boto3 method, log and/or return response or exception
+
+            Caller can choose to wait and log a response at log_level logging.ERROR
+            instead of logging.INFO if a downstream error occurs, or choose to log an
+            expected exception at logging.INFO instead of logging.ERROR .
+            """
+            log_level = None
+            try:
+              op_method = getattr(rds_client_get(), op_method_name)
+              op_result = op_method(**op_kwargs)
+            except Exception as misc_exception:  # pylint: disable=broad-exception-caught
+              op_result = misc_exception
+              if log_exception:
+                log_level = logging.ERROR
+            else:
+              if log_response:  # elif not allowed with try...except
+                log_level = logging.INFO
+            if log_level is not None:
+              op_log(event, op_method_name, op_kwargs, op_result, log_level)
+            return op_result
+
+
+          def lambda_handler(event, context):  # pylint: disable=unused-argument
+            """Try to stop Aurora database clusters and RDS database instances
+
+            Called in response to forced database start events ( EventPattern in
+            CloudFormation) from a queue.
+
+            Exit codes:
+
+              1 (abnormal):
+                Event message remains in SQS main queue; retry after VisibilityTimeout ,
+                up to maxReceiveCount (properties in CloudFormation) total times.
+
+              0 (normal):
+                Event message deleted; do not retry, because:
+                  1. Database was already, or was already being, deleted or stopped
+                  2. Database stop request has been made successfully
+                  3. It was not possible to request that database be stopped, due to:
+                     a. An unexpected error while trying
+                        (boto3 handles transient errors; config parameter: retries )
+                     b. An error while getting RDS database instance status
+                     c. An abnormal, unexpected, or unfamiliar database status
+            """
+            log("LAMBDA_EVENT", event, logging.INFO)
+            batch_item_failures = []
+            for sqs_msg in event.get("Records", []):  # 0 or 1 SQS messages expected
+              sqs_msg_id = sqs_msg["messageId"]
+              db_event_detail = json.loads(sqs_msg["body"])["detail"]
+              source_type_word = db_event_detail["SourceType"].split("_")[-1].lower()
+              source_identifier = db_event_detail["SourceIdentifier"]
+
+              stop_db_method_name = f"stop_db_{source_type_word}"
+              stop_db_kwargs = {
+                f"DB{source_type_word.title()}Identifier": source_identifier,
+              }
+              stop_db_result = op_do(
+                event, stop_db_method_name, stop_db_kwargs, log_exception=False
+              )
+              if isinstance(stop_db_result, Exception):
+                (log_level, retry) = assess_stop_db_exception(
+                  event, stop_db_result, stop_db_kwargs
+                )
+                op_log(
+                  event, stop_db_method_name, stop_db_kwargs, stop_db_result, log_level
+                )
+                if retry:
+                  batch_item_failures.append({
+                    "itemIdentifier": sqs_msg_id,
+                  })
+
+            lambda_response = {}
+            if batch_item_failures:
+              lambda_response.update({
+                "batchItemFailures": batch_item_failures,
+              })
+            return lambda_response
