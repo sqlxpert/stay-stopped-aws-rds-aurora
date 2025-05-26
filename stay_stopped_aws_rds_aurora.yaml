@@ -31,17 +31,28 @@ Parameters:
     AllowedValues:
       - ""
 
-  AddTestEvents:
+  Test:
     Type: String
     Description: >-
-      Whether to also accept database stop and non-forced database start
-      events, for testing. Do not leave this set to "true", because it
-      prevents RDS database instances and Aurora database clusters from
-      staying on after they are started.
-    Default: "false"
+      Change this to "Aurora" or "RDS" for temporary, controlled testing.
+      Those settings add rules for Aurora database cluster or RDS database
+      instance stop and non-forced start events, and also relax the queue
+      policy for the main SQS queue, so that sources other than EventBridge
+      can send (synthetic) messages and targets other than the AWS Lambda
+      function and the error (dead letter) queue can receive and delete
+      messages.
+      Tip: Temporarily reducing QueueVisibilityTimeoutSecs facilitates
+      testing.
+      WARNING:
+      Specifying "Aurora" or "RDS" prevents Aurora database clusters or RDS
+      database instances from staying on after they are started. In an AWS
+      account and region containing both Aurora database clusters and RDS
+      database instances, do not specify "RDS"; test with "Aurora" only.
+    Default: "None"
     AllowedValues:
-      - "false"
-      - "true"
+      - "None"
+      - "Aurora"
+      - "RDS"
 
   QueueVisibilityTimeoutSecs:
     Type: Number
@@ -207,7 +218,7 @@ Metadata:
       - Label:
           default: Testing
         Parameters:
-          - AddTestEvents
+          - Test
       - Label:
           default: SQS queues for forced database start events and errors
         Parameters:
@@ -239,8 +250,8 @@ Metadata:
         default: Enable?
       PlaceholderAdvancedParameters:
         default: Do not change the parameters below, unless necessary!
-      AddTestEvents:
-        default: Add test events?
+      Test:
+        default: Test mode?
       QueueVisibilityTimeoutSecs:
         default: Seconds between attempts to stop a database
       QueueMaxReceiveCount:
@@ -272,7 +283,9 @@ Conditions:
 
   EnableTrue: !Equals [ !Ref Enable, "true" ]
 
-  AddTestEventsTrue: !Equals [ !Ref AddTestEvents, "true" ]
+  TestNone: !Equals [ !Ref Test, "None" ]
+  TestAurora: !Equals [ !Ref Test, "Aurora" ]
+  TestRds: !Equals [ !Ref Test, "RDS" ]
 
   SqsKmsKeyBlank: !Equals [ !Ref SqsKmsKey, "" ]
   SqsKmsKeyCustom:
@@ -408,16 +421,21 @@ Resources:
                 "aws:SourceArn":
                   - !GetAtt AuroraDbForcedStartToQueueRule.Arn
                   - !GetAtt RdsDbForcedStartToQueueRule.Arn
-          - Sid: ExclusiveSource
-            Effect: Deny
-            Principal: "*"
-            Action: sqs:SendMessage
-            Resource: "*"
-            Condition:
-              ArnNotEquals:
-                "aws:SourceArn":
-                  - !GetAtt AuroraDbForcedStartToQueueRule.Arn
-                  - !GetAtt RdsDbForcedStartToQueueRule.Arn
+
+          - Fn::If:
+              - TestNone
+              - Sid: ExclusiveSource
+                Effect: Deny
+                Principal: "*"
+                Action: sqs:SendMessage
+                Resource: "*"
+                Condition:
+                  ArnNotEquals:
+                    "aws:SourceArn":
+                      - !GetAtt AuroraDbForcedStartToQueueRule.Arn
+                      - !GetAtt RdsDbForcedStartToQueueRule.Arn
+              - !Ref AWS::NoValue
+
           - Sid:
               Fn::If:
                 - SqsKmsKeyCustom
@@ -446,20 +464,24 @@ Resources:
             Resource: "*"
             Condition:
               ArnEquals: { aws:SourceArn: !GetAtt ErrorQueue.Arn }
-          - Sid: ExclusiveTargets
-            Effect: Deny
-            Principal: "*"
-            Action:
-              - sqs:ChangeMessageVisibility
-              - sqs:ReceiveMessage
-              - sqs:DeleteMessage
-            Resource: "*"
-            Condition:
-              ArnNotEquals:
-                aws:PrincipalArn:
-                  - !GetAtt LambdaFnRole.Arn
-                aws:SourceArn:
-                  - !GetAtt ErrorQueue.Arn
+
+          - Fn::If:
+              - TestNone
+              - Sid: ExclusiveTargets
+                Effect: Deny
+                Principal: "*"
+                Action:
+                  - sqs:ChangeMessageVisibility
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                Resource: "*"
+                Condition:
+                  ArnNotEquals:
+                    aws:PrincipalArn:
+                      - !GetAtt LambdaFnRole.Arn
+                    aws:SourceArn:
+                      - !GetAtt ErrorQueue.Arn
+              - !Ref AWS::NoValue
 
   ErrorQueuePol:
     Type: AWS::SQS::QueuePolicy
@@ -533,14 +555,14 @@ Resources:
     Properties:
       Description:
         Fn::If:
-          - AddTestEventsTrue
+          - TestAurora
           - !Sub >-
               Forced Aurora database cluster start after 7 days
               (RDS-EVENT-0153), plus stop (RDS-EVENT-0150) and non-forced
               start (RDS-EVENT-0151) for testing, to ${Queue.QueueName}
           - !Sub >-
-              Forced Aurora database cluster start after 7 days, to
-              ${Queue.QueueName}
+              Forced Aurora database cluster start after 7 days
+              (RDS-EVENT-0153), to ${Queue.QueueName}
       EventPattern:
         # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster
         # "DB cluster is being started due to it exceeding the maximum allowed
@@ -551,9 +573,9 @@ Resources:
           EventID:
             - RDS-EVENT-0153
             # Non-forced start:
-            - !If [ AddTestEventsTrue, RDS-EVENT-0151, !Ref AWS::NoValue ]
+            - !If [ TestAurora, RDS-EVENT-0151, !Ref AWS::NoValue ]
             # Stop:
-            - !If [ AddTestEventsTrue, RDS-EVENT-0150, !Ref AWS::NoValue ]
+            - !If [ TestAurora, RDS-EVENT-0150, !Ref AWS::NoValue ]
           SourceType: [ CLUSTER ]
           SourceIdentifier:
             - anything-but:
@@ -575,14 +597,14 @@ Resources:
     Properties:
       Description:
         Fn::If:
-          - AddTestEventsTrue
+          - TestRds
           - !Sub >-
               Forced RDS database instance start after 7 days
               (RDS-EVENT-0154), plus stop (RDS-EVENT-0087) and non-forced
               start (RDS-EVENT-0088) for testing, to ${Queue.QueueName}
           - !Sub >-
-              Forced RDS database instance start after 7 days, to
-              ${Queue.QueueName}
+              Forced RDS database instance start after 7 days
+              (RDS-EVENT-0154), to ${Queue.QueueName}
       EventPattern:
         # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
         # "DB instance is being started due to it exceeding the maximum
@@ -593,9 +615,9 @@ Resources:
           EventID:
             - RDS-EVENT-0154
             # Non-forced start:
-            - !If [ AddTestEventsTrue, RDS-EVENT-0088, !Ref AWS::NoValue ]
+            - !If [ TestRds, RDS-EVENT-0088, !Ref AWS::NoValue ]
             # Stop:
-            - !If [ AddTestEventsTrue, RDS-EVENT-0087, !Ref AWS::NoValue ]
+            - !If [ TestRds, RDS-EVENT-0087, !Ref AWS::NoValue ]
           SourceType: [ DB_INSTANCE ]
           SourceIdentifier:
             - anything-but:
