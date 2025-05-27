@@ -1,6 +1,58 @@
-# stay-stopped-aws-rds-aurora
+# Stay Stopped, RDS and Aurora!
 
-Stop AWS RDS and Aurora databases after the forced 7th-day start
+You can keep an EC2 instance stopped as long as you want, but if you stop an
+RDS or Aurora database, AWS restarts it after 7 days.
+
+This tool automatically stops RDS and Aurora databases again. It's for
+databases that you use sporadically, including some development and test
+databases. If it would cost too much to keep a database running all the time
+but take too long to re-create it from scratch, this tool might save you
+money, time, or both.
+
+## Design
+
+The design is simple but robust:
+
+- There are no opt-in or opt-out tags to set. This tool only affects databases
+  that _AWS_ is starting after they've been stopped for 7 days. It listens on
+  the default EventBridge bus for
+  [RDS-EVENT-0154](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance)
+  (RDS)
+  and
+  [RDS-EVENT-0153](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
+  (Aurora).
+
+- Stopping stuff is an inherently idempotent operation: keep trying until it
+  is stopped! Some well-intentioned Step Function solutions introduce an
+  intermittent bug (a
+  [race condition](https://en.wikipedia.org/wiki/Race_condition))
+  by checking whether a database is ready _before_ trying to stop it. This
+  tool intercepts expected, temporary errors and keeps trying every 9 minutes
+  until the database is stopped, an unexpected error occurs, or 24 hours pass.
+  In the meantime, event messages stay in the main SQS queue.
+
+- It's not enough to call `stop_db_instance` or `stop_db_cluster` and hope for
+  the best. Unlike the typical "Hello, world!"-level AWS Lambda functions
+  you'll find &mdash; even in some official AWS re:Post knowledge base
+  solutions &mdash; this tool checks for errors. Look for an `ERROR`-level
+  log entry or an error (dead letter) queue entry, in case your database could
+  not be stopped.
+  [Budget alerts](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-action-configure.html)
+  and
+  [cost anomaly detection](https://docs.aws.amazon.com/cost-management/latest/userguide/manage-ad.html)
+  are still essential.
+
+- It's important to start a database before its maintenance window and leave it
+  running, once in a while. This tool might stop a database before a
+  maintenance operation can begin.
+
+## Quick Start
+
+## Multi-Account, Multi-Region Installation
+
+## Security
+
+## Testing and Troubleshooting
 
 ## Licenses
 
