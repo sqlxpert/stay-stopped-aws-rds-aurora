@@ -36,11 +36,10 @@ Parameters:
     Description: >-
       Change this to "Aurora" or "RDS" for temporary, controlled testing.
       Those settings add rules for Aurora database cluster or RDS database
-      instance stop and non-forced start events, and also relax the queue
-      policy for the main SQS queue, so that sources other than EventBridge
-      can send (synthetic) messages and targets other than the AWS Lambda
-      function and the error (dead letter) queue can receive and delete
-      messages.
+      instance non-forced start events, and also relax the queue policy for
+      the main SQS queue, so that sources other than EventBridge can send
+      (synthetic) messages and targets other than the AWS Lambda function and
+      the error (dead letter) queue can receive and delete messages.
       Tip: Temporarily reducing QueueVisibilityTimeoutSecs facilitates
       testing.
       WARNING:
@@ -147,6 +146,14 @@ Parameters:
       Policies are account-wide, not regional.
     Default: ""
 
+  LambdaFnBatchSize:
+    Type: Number
+    Description: >-
+      How many databases to stop in one function invokation. Batching is not
+      important for a sporadic and low-volume workload.
+    MinValue: 1
+    Default: 1
+
   LambdaFnMemoryMB:
     Type: Number
     Description: >-
@@ -233,6 +240,7 @@ Metadata:
           - LambdaFnReservedConcurrentExecutions
           - LambdaFnMaximumConcurrency
           - LambdaFnRoleAttachLocalPolicyName
+          - LambdaFnBatchSize
           - LambdaFnMemoryMB
           - LambdaFnTimeoutSecs
       - Label:
@@ -268,6 +276,8 @@ Metadata:
         default: Maximum number of parallel operations
       LambdaFnRoleAttachLocalPolicyName:
         default: Name of local IAM policy to attach to role
+      LambdaFnBatchSize:
+        default: Number of databases to stop per invokation
       LambdaFnMemoryMB:
         default: Megabytes of memory
       LambdaFnTimeoutSecs:
@@ -389,10 +399,10 @@ Resources:
                       StringEquals: { "kms:ViaService": !Sub "sqs.${AWS::Region}.amazonaws.com" }
             - !Ref AWS::NoValue
 
-  QueuePol:
+  MainQueuePol:
     Type: AWS::SQS::QueuePolicy
     Properties:
-      Queues: [ !Ref Queue ]
+      Queues: [ !Ref MainQueue ]
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -419,8 +429,8 @@ Resources:
             Condition:
               ArnEquals:
                 "aws:SourceArn":
-                  - !GetAtt AuroraDbForcedStartToQueueRule.Arn
-                  - !GetAtt RdsDbForcedStartToQueueRule.Arn
+                  - !GetAtt AuroraDbForcedStartToMainQueueRule.Arn
+                  - !GetAtt RdsDbForcedStartToMainQueueRule.Arn
 
           - Fn::If:
               - TestNone
@@ -432,8 +442,8 @@ Resources:
                 Condition:
                   ArnNotEquals:
                     "aws:SourceArn":
-                      - !GetAtt AuroraDbForcedStartToQueueRule.Arn
-                      - !GetAtt RdsDbForcedStartToQueueRule.Arn
+                      - !GetAtt AuroraDbForcedStartToMainQueueRule.Arn
+                      - !GetAtt RdsDbForcedStartToMainQueueRule.Arn
               - !Ref AWS::NoValue
 
           - Sid:
@@ -513,8 +523,8 @@ Resources:
             Condition:
               ArnEquals:
                 "aws:SourceArn":
-                  - !GetAtt AuroraDbForcedStartToQueueRule.Arn
-                  - !GetAtt RdsDbForcedStartToQueueRule.Arn
+                  - !GetAtt AuroraDbForcedStartToMainQueueRule.Arn
+                  - !GetAtt RdsDbForcedStartToMainQueueRule.Arn
           - Sid:
               Fn::If:
                 - SqsKmsKeyCustom
@@ -527,7 +537,7 @@ Resources:
             Condition:
               ArnEquals:
                 "aws:SourceArn":
-                  - !GetAtt Queue.Arn
+                  - !GetAtt MainQueue.Arn
           - Sid: ExclusiveSources
             Effect: Deny
             Principal: "*"
@@ -536,21 +546,21 @@ Resources:
             Condition:
               ArnNotEquals:
                 "aws:SourceArn":
-                  - !GetAtt AuroraDbForcedStartToQueueRule.Arn
-                  - !GetAtt RdsDbForcedStartToQueueRule.Arn
-                  - !GetAtt Queue.Arn
+                  - !GetAtt AuroraDbForcedStartToMainQueueRule.Arn
+                  - !GetAtt RdsDbForcedStartToMainQueueRule.Arn
+                  - !GetAtt MainQueue.Arn
 
   # Administrator: Block other invocation mechanisms
   LambdaFnInvokeLambdaPerm:
     Type: AWS::Lambda::Permission
-    DependsOn: QueuePol
+    DependsOn: MainQueuePol
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref LambdaFn
       Principal: sqs.amazonaws.com
-      SourceArn: !GetAtt Queue.Arn
+      SourceArn: !GetAtt MainQueue.Arn
 
-  AuroraDbForcedStartToQueueRule:
+  AuroraDbForcedStartToMainQueueRule:
     Type: AWS::Events::Rule
     Properties:
       Description:
@@ -558,11 +568,11 @@ Resources:
           - TestAurora
           - !Sub >-
               Forced Aurora database cluster start after 7 days
-              (RDS-EVENT-0153), plus stop (RDS-EVENT-0150) and non-forced
-              start (RDS-EVENT-0151) for testing, to ${Queue.QueueName}
+              (RDS-EVENT-0153), plus non-forced start (RDS-EVENT-0151) for
+              temporary testing, to ${MainQueue.QueueName}
           - !Sub >-
               Forced Aurora database cluster start after 7 days
-              (RDS-EVENT-0153), to ${Queue.QueueName}
+              (RDS-EVENT-0153), to ${MainQueue.QueueName}
       EventPattern:
         # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster
         # "DB cluster is being started due to it exceeding the maximum allowed
@@ -572,10 +582,7 @@ Resources:
         detail:
           EventID:
             - RDS-EVENT-0153
-            # Non-forced start:
             - !If [ TestAurora, RDS-EVENT-0151, !Ref AWS::NoValue ]
-            # Stop:
-            - !If [ TestAurora, RDS-EVENT-0150, !Ref AWS::NoValue ]
           SourceType: [ CLUSTER ]
           SourceIdentifier:
             - anything-but:
@@ -584,15 +591,15 @@ Resources:
                 # - null
         version: [ "0" ]
       Targets:
-        - Id: !GetAtt Queue.QueueName
-          Arn: !GetAtt Queue.Arn
+        - Id: !GetAtt MainQueue.QueueName
+          Arn: !GetAtt MainQueue.Arn
           RetryPolicy:
             MaximumRetryAttempts: 10
             MaximumEventAgeInSeconds: 300  # 5 minutes
           DeadLetterConfig: { Arn: !GetAtt ErrorQueue.Arn }
       State: !If [ EnableTrue, ENABLED, DISABLED ]
 
-  RdsDbForcedStartToQueueRule:
+  RdsDbForcedStartToMainQueueRule:
     Type: AWS::Events::Rule
     Properties:
       Description:
@@ -600,11 +607,11 @@ Resources:
           - TestRds
           - !Sub >-
               Forced RDS database instance start after 7 days
-              (RDS-EVENT-0154), plus stop (RDS-EVENT-0087) and non-forced
-              start (RDS-EVENT-0088) for testing, to ${Queue.QueueName}
+              (RDS-EVENT-0154), plus non-forced start (RDS-EVENT-0088) for
+              temporary testing, to ${MainQueue.QueueName}
           - !Sub >-
               Forced RDS database instance start after 7 days
-              (RDS-EVENT-0154), to ${Queue.QueueName}
+              (RDS-EVENT-0154), to ${MainQueue.QueueName}
       EventPattern:
         # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
         # "DB instance is being started due to it exceeding the maximum
@@ -614,10 +621,7 @@ Resources:
         detail:
           EventID:
             - RDS-EVENT-0154
-            # Non-forced start:
             - !If [ TestRds, RDS-EVENT-0088, !Ref AWS::NoValue ]
-            # Stop:
-            - !If [ TestRds, RDS-EVENT-0087, !Ref AWS::NoValue ]
           SourceType: [ DB_INSTANCE ]
           SourceIdentifier:
             - anything-but:
@@ -626,15 +630,15 @@ Resources:
                 # - null
         version: [ "0" ]
       Targets:
-        - Id: !GetAtt Queue.QueueName
-          Arn: !GetAtt Queue.Arn
+        - Id: !GetAtt MainQueue.QueueName
+          Arn: !GetAtt MainQueue.Arn
           RetryPolicy:
             MaximumRetryAttempts: 10
             MaximumEventAgeInSeconds: 300  # 5 minutes
           DeadLetterConfig: { Arn: !GetAtt ErrorQueue.Arn }
       State: !If [ EnableTrue, ENABLED, DISABLED ]
 
-  Queue:
+  MainQueue:
     Type: AWS::SQS::Queue
     Properties:
       DelaySeconds: 0
@@ -650,7 +654,11 @@ Resources:
       KmsDataKeyReusePeriodSeconds:
         !If [ SqsKmsKeyBlank, !Ref AWS::NoValue, 86400 ]  # seconds (24 hours)
       MaximumMessageSize: !Ref QueueMessageBytesMax
+
       MessageRetentionPeriod: !Ref ErrorQueueMessageRetentionPeriodSecs
+      # Messages will be processed and deleted, or be moved to error (dead
+      # letter) queue by QueueMaxReceiveCount * QueueVisibilityTimeoutSecs
+
       ReceiveMessageWaitTimeSeconds: 20  # long polling (lowest cost)
       VisibilityTimeout: !Ref QueueVisibilityTimeoutSecs
       RedrivePolicy:
@@ -688,13 +696,13 @@ Resources:
           - !Ref AWS::NoValue
           - !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${CloudWatchLogsKmsKey}"
 
-  QueueToLambdaFnMapping:
+  MainQueueToLambdaFnMapping:
     Type: AWS::Lambda::EventSourceMapping
     DependsOn: LambdaFnInvokeLambdaPerm
     Properties:
-      EventSourceArn: !GetAtt Queue.Arn
+      EventSourceArn: !GetAtt MainQueue.Arn
       MaximumBatchingWindowInSeconds: 20  # long polling (lowest cost)
-      BatchSize: 1
+      BatchSize: !Ref LambdaFnBatchSize
       FunctionName: !GetAtt LambdaFn.Arn
       ScalingConfig:
         MaximumConcurrency: !Ref LambdaFnMaximumConcurrency
@@ -726,7 +734,7 @@ Resources:
       Code:
         ZipFile: |
           #!/usr/bin/env python3
-          """Stop AWS RDS and Aurora databases after forced 7-day start
+          """Stop AWS RDS and Aurora databases after the forced 7-day start
 
           github.com/sqlxpert/stay-stopped-aws-rds-aurora  GPLv3  Copyright Paul Marcelin
           """
@@ -804,26 +812,28 @@ Resources:
 
             None indicates an error
             """
+            log_level = logging.ERROR
             db_instance_status = None
 
             describe_db_method_name = "describe_db_instances"
             describe_db_result = op_do(
-              lambda_event,
               describe_db_method_name,
-              describe_db_kwargs,
-              log_response=False
+              describe_db_kwargs
             )
             if not isinstance(describe_db_result, Exception):
               db_instances = describe_db_result.get("DBInstances", [])
               if len(db_instances) == 1:
                 db_instance_status = db_instances[0].get("DBInstanceStatus")
-              op_log(
-                lambda_event,
-                describe_db_method_name,
-                describe_db_kwargs,
-                describe_db_result,
-                logging.ERROR if db_instance_status is None else logging.INFO
-              )
+                if db_instance_status is not None:
+                  log_level = logging.INFO
+
+            op_log(
+              lambda_event,
+              describe_db_method_name,
+              describe_db_kwargs,
+              describe_db_result,
+              log_level
+            )
 
             return db_instance_status
 
@@ -839,6 +849,7 @@ Resources:
             """
             log_level = logging.ERROR
             retry = False
+
             if db_status is not None:
               match db_status.lower():
                 # Unless noted, same status values (normalized to lower case) for
@@ -892,6 +903,7 @@ Resources:
             """
             log_level = logging.ERROR
             retry = False
+
             if isinstance(misc_exception, botocore.exceptions.ClientError):
               err_dict = getattr(misc_exception, "response", {}).get("Error", {})
               match err_dict.get("Code"):
@@ -929,56 +941,35 @@ Resources:
             return rds_client
 
 
-          def op_do(
-            lambda_event,
-            op_method_name,
-            op_kwargs,
-            log_response=True,
-            log_exception=True
-          ):
-            """Call a boto3 method, log and/or return response or exception
-
-            Caller can choose to wait and log a response at log_level logging.ERROR
-            instead of logging.INFO if a downstream error occurs, or choose to log an
-            expected exception at logging.INFO instead of logging.ERROR .
+          def op_do(op_method_name, op_kwargs):
+            """Take a boto3 method name and kwargs, call, return response or exception
             """
-            log_level = None
             try:
               op_method = getattr(rds_client_get(), op_method_name)
               op_result = op_method(**op_kwargs)
             except Exception as misc_exception:  # pylint: disable=broad-exception-caught
               op_result = misc_exception
-              if log_exception:
-                log_level = logging.ERROR
-            else:
-              if log_response:  # elif not allowed with try...except
-                log_level = logging.INFO
-            if log_level is not None:
-              op_log(lambda_event, op_method_name, op_kwargs, op_result, log_level)
             return op_result
 
 
           def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
             """Try to stop Aurora database clusters and RDS database instances
 
-            Called in response to forced database start events ( EventPattern in
-            CloudFormation) from a queue.
+            Called in response to a batch of forced database start events (see
+            EventPattern in CloudFormation) stored as messages in the main SQS queue.
 
-            Exit codes:
+            Batch item failure:
+              Event message remains in main queue; retry after VisibilityTimeout ,
+              up to maxReceiveCount (see CloudFormation) total times.
 
-              1 (abnormal):
-                Event message remains in SQS main queue; retry after VisibilityTimeout ,
-                up to maxReceiveCount (properties in CloudFormation) total times.
-
-              0 (normal):
-                Event message deleted; do not retry, because:
-                  1. Database was already, or was already being, deleted or stopped
-                  2. Database stop request has been made successfully
-                  3. It was not possible to request that database be stopped, due to:
-                     a. An unexpected error while trying
-                        (boto3 handles transient errors; config parameter: retries )
-                     b. An error while getting RDS database instance status
-                     c. An abnormal, unexpected, or unfamiliar database status
+            Batch item success:
+              Event message deleted from main queue; do not retry, because:
+                1. Database was already stopped, deleted, or being deleted, or
+                2. It was not possible to request that database be stopped, due to:
+                   a. An unexpected error while trying
+                      (boto3 handles transient errors; config parameter: retries )
+                   b. An error while getting RDS database instance status
+                   c. An abnormal, unexpected, or unfamiliar database status
             """
             log("LAMBDA_EVENT", lambda_event, logging.INFO)
             batch_item_failures = []
@@ -989,31 +980,34 @@ Resources:
                 sqs_message_id = sqs_message["messageId"]
                 db_event = json.loads(sqs_message["body"])
                 db_event_detail = db_event["detail"]
-                source_type_word = db_event_detail["SourceType"].split("_")[-1].lower()
+
+                # Events have "CLUSTER" (Aurora) or "DB_INSTANCE" (RDS); take last word
+                source_type_word = db_event_detail["SourceType"].split("_")[-1]
                 source_identifier = db_event_detail["SourceIdentifier"]
 
-                stop_db_method_name = f"stop_db_{source_type_word}"
+                log_level = logging.INFO
+                retry = True
+
+                stop_db_method_name = f"stop_db_{source_type_word.lower()}"
                 stop_db_kwargs = {
                   f"DB{source_type_word.title()}Identifier": source_identifier,
                 }
-                stop_db_result = op_do(
-                  lambda_event, stop_db_method_name, stop_db_kwargs, log_exception=False
-                )
+                stop_db_result = op_do(stop_db_method_name, stop_db_kwargs)
                 if isinstance(stop_db_result, Exception):
                   (log_level, retry) = assess_stop_db_exception(
                     lambda_event, stop_db_result, stop_db_kwargs
                   )
-                  op_log(
-                    lambda_event,
-                    stop_db_method_name,
-                    stop_db_kwargs,
-                    stop_db_result,
-                    log_level
-                  )
-                  if retry:
-                    batch_item_failures.append({
-                      "itemIdentifier": sqs_message_id,
-                    })
+
+                op_log(
+                  lambda_event,
+                  stop_db_method_name,
+                  stop_db_kwargs,
+                  stop_db_result,
+                  log_level
+                )
+
+                if retry:
+                  batch_item_failures.append({"itemIdentifier": sqs_message_id, })
 
               except Exception as misc_exception:  # pylint: disable=broad-exception-caught
                 log_level = logging.ERROR
@@ -1023,7 +1017,5 @@ Resources:
 
             lambda_response = {}
             if batch_item_failures:
-              lambda_response.update({
-                "batchItemFailures": batch_item_failures,
-              })
+              lambda_response.update({"batchItemFailures": batch_item_failures, })
             return lambda_response

@@ -77,26 +77,28 @@ def get_db_instance_status(lambda_event, describe_db_kwargs):
 
   None indicates an error
   """
+  log_level = logging.ERROR
   db_instance_status = None
 
   describe_db_method_name = "describe_db_instances"
   describe_db_result = op_do(
-    lambda_event,
     describe_db_method_name,
-    describe_db_kwargs,
-    log_response=False
+    describe_db_kwargs
   )
   if not isinstance(describe_db_result, Exception):
     db_instances = describe_db_result.get("DBInstances", [])
     if len(db_instances) == 1:
       db_instance_status = db_instances[0].get("DBInstanceStatus")
-    op_log(
-      lambda_event,
-      describe_db_method_name,
-      describe_db_kwargs,
-      describe_db_result,
-      logging.ERROR if db_instance_status is None else logging.INFO
-    )
+      if db_instance_status is not None:
+        log_level = logging.INFO
+
+  op_log(
+    lambda_event,
+    describe_db_method_name,
+    describe_db_kwargs,
+    describe_db_result,
+    log_level
+  )
 
   return db_instance_status
 
@@ -112,6 +114,7 @@ def assess_db_status(db_status):
   """
   log_level = logging.ERROR
   retry = False
+
   if db_status is not None:
     match db_status.lower():
       # Unless noted, same status values (normalized to lower case) for
@@ -165,6 +168,7 @@ def assess_stop_db_exception(
   """
   log_level = logging.ERROR
   retry = False
+
   if isinstance(misc_exception, botocore.exceptions.ClientError):
     err_dict = getattr(misc_exception, "response", {}).get("Error", {})
     match err_dict.get("Code"):
@@ -202,56 +206,35 @@ def rds_client_get():
   return rds_client
 
 
-def op_do(
-  lambda_event,
-  op_method_name,
-  op_kwargs,
-  log_response=True,
-  log_exception=True
-):
-  """Call a boto3 method, log and/or return response or exception
-
-  Caller can choose to wait and log a response at log_level logging.ERROR
-  instead of logging.INFO if a downstream error occurs, or choose to log an
-  expected exception at logging.INFO instead of logging.ERROR .
+def op_do(op_method_name, op_kwargs):
+  """Take a boto3 method name and kwargs, call, return response or exception
   """
-  log_level = None
   try:
     op_method = getattr(rds_client_get(), op_method_name)
     op_result = op_method(**op_kwargs)
   except Exception as misc_exception:  # pylint: disable=broad-exception-caught
     op_result = misc_exception
-    if log_exception:
-      log_level = logging.ERROR
-  else:
-    if log_response:  # elif not allowed with try...except
-      log_level = logging.INFO
-  if log_level is not None:
-    op_log(lambda_event, op_method_name, op_kwargs, op_result, log_level)
   return op_result
 
 
 def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
   """Try to stop Aurora database clusters and RDS database instances
 
-  Called in response to forced database start events ( EventPattern in
-  CloudFormation) from a queue.
+  Called in response to a batch of forced database start events (see
+  EventPattern in CloudFormation) stored as messages in the main SQS queue.
 
-  Exit codes:
+  Batch item failure:
+    Event message remains in main queue; retry after VisibilityTimeout ,
+    up to maxReceiveCount (see CloudFormation) total times.
 
-    1 (abnormal):
-      Event message remains in SQS main queue; retry after VisibilityTimeout ,
-      up to maxReceiveCount (properties in CloudFormation) total times.
-
-    0 (normal):
-      Event message deleted; do not retry, because:
-        1. Database was already, or was already being, deleted or stopped
-        2. Database stop request has been made successfully
-        3. It was not possible to request that database be stopped, due to:
-           a. An unexpected error while trying
-              (boto3 handles transient errors; config parameter: retries )
-           b. An error while getting RDS database instance status
-           c. An abnormal, unexpected, or unfamiliar database status
+  Batch item success:
+    Event message deleted from main queue; do not retry, because:
+      1. Database was already stopped, deleted, or being deleted, or
+      2. It was not possible to request that database be stopped, due to:
+         a. An unexpected error while trying
+            (boto3 handles transient errors; config parameter: retries )
+         b. An error while getting RDS database instance status
+         c. An abnormal, unexpected, or unfamiliar database status
   """
   log("LAMBDA_EVENT", lambda_event, logging.INFO)
   batch_item_failures = []
@@ -262,31 +245,34 @@ def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
       sqs_message_id = sqs_message["messageId"]
       db_event = json.loads(sqs_message["body"])
       db_event_detail = db_event["detail"]
-      source_type_word = db_event_detail["SourceType"].split("_")[-1].lower()
+
+      # Events have "CLUSTER" (Aurora) or "DB_INSTANCE" (RDS); take last word
+      source_type_word = db_event_detail["SourceType"].split("_")[-1]
       source_identifier = db_event_detail["SourceIdentifier"]
 
-      stop_db_method_name = f"stop_db_{source_type_word}"
+      log_level = logging.INFO
+      retry = True
+
+      stop_db_method_name = f"stop_db_{source_type_word.lower()}"
       stop_db_kwargs = {
         f"DB{source_type_word.title()}Identifier": source_identifier,
       }
-      stop_db_result = op_do(
-        lambda_event, stop_db_method_name, stop_db_kwargs, log_exception=False
-      )
+      stop_db_result = op_do(stop_db_method_name, stop_db_kwargs)
       if isinstance(stop_db_result, Exception):
         (log_level, retry) = assess_stop_db_exception(
           lambda_event, stop_db_result, stop_db_kwargs
         )
-        op_log(
-          lambda_event,
-          stop_db_method_name,
-          stop_db_kwargs,
-          stop_db_result,
-          log_level
-        )
-        if retry:
-          batch_item_failures.append({
-            "itemIdentifier": sqs_message_id,
-          })
+
+      op_log(
+        lambda_event,
+        stop_db_method_name,
+        stop_db_kwargs,
+        stop_db_result,
+        log_level
+      )
+
+      if retry:
+        batch_item_failures.append({"itemIdentifier": sqs_message_id, })
 
     except Exception as misc_exception:  # pylint: disable=broad-exception-caught
       log_level = logging.ERROR
@@ -296,7 +282,5 @@ def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
 
   lambda_response = {}
   if batch_item_failures:
-    lambda_response.update({
-      "batchItemFailures": batch_item_failures,
-    })
+    lambda_response.update({"batchItemFailures": batch_item_failures, })
   return lambda_response
