@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stop AWS RDS and Aurora databases after the forced 7-day start
+"""Stop AWS RDS and Aurora databases after the forced 7th-day start
 
 github.com/sqlxpert/stay-stopped-aws-rds-aurora  GPLv3  Copyright Paul Marcelin
 """
@@ -59,12 +59,12 @@ INVALID_DB_CLUSTER_STATE_RE = re.compile(
 )
 
 
-def extract_db_cluster_state(err_msg):
+def extract_db_cluster_state(error_msg):
   """Take an InvalidDBClusterStateFault error message, return cluster state
 
   None indicates state not found
   """
-  db_cluster_state_re_match = INVALID_DB_CLUSTER_STATE_RE.match(err_msg)
+  db_cluster_state_re_match = INVALID_DB_CLUSTER_STATE_RE.match(error_msg)
   return (
     db_cluster_state_re_match.group("db_cluster_state")
     if db_cluster_state_re_match else
@@ -108,6 +108,9 @@ def assess_db_status(db_status):
 
   Aurora database cluster:
     https://docs.aws.amazon.com/en_us/AmazonRDS/latest/AuroraUserGuide/accessing-monitoring.html#Aurora.Status
+
+  Aurora database instance (information only; instance status not assessed)
+    https://docs.aws.amazon.com/en_us/AmazonRDS/latest/AuroraUserGuide/accessing-monitoring.html#Overview.DBInstance.Status
 
   RDS database instance:
     https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/accessing-monitoring.html#Overview.DBInstance.Status
@@ -155,6 +158,25 @@ def assess_db_status(db_status):
   return (log_level, retry)
 
 
+def assess_db_invalid_parameter(error_message):
+  """Take InvalidParameterCombination message, return log level and retry flag
+  """
+  log_level = logging.ERROR
+  retry = False
+
+  if (
+    ("aurora" in error_message)
+    and ("not eligible for stopping" in error_message)
+  ):
+    log_level = logging.INFO
+    # Quietly ignore database instance-level event for Aurora,
+    # because there will be a corresponding database cluster-level event.
+    # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
+    # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-cluster-stop-start.html#aurora-cluster-start-stop-overview
+
+  return (log_level, retry)
+
+
 def assess_stop_db_exception(
   lambda_event, source_type_word, misc_exception, describe_db_kwargs
 ):
@@ -170,26 +192,34 @@ def assess_stop_db_exception(
   retry = False
 
   if isinstance(misc_exception, botocore.exceptions.ClientError):
-    err_dict = getattr(misc_exception, "response", {}).get("Error", {})
-    match err_dict.get("Code"):
+    error_dict = getattr(misc_exception, "response", {}).get("Error", {})
+    error_message = error_dict.get("Message", "")
+    match error_dict.get("Code"):
 
       case "InvalidDBClusterStateFault":
-        db_status = extract_db_cluster_state(err_dict.get("Message", ""))
+        db_status = extract_db_cluster_state(error_message)
         (log_level, retry) = assess_db_status(db_status)
 
       case "InvalidDBInstanceState":  # "Fault" suffix is missing here!
         if source_type_word == "CLUSTER":
-          # stop_db_cluster sometimes produces exceptions for the database
-          # cluster's database instances. DBClusterIdentifier is known, but
-          # DBInstanceIdentifier would have to be extracted from the error
-          # message, for a describe_db_instances call to get database instance
-          # status. Instead, retry in hopes that the database instance(s)
-          # enter a status compatible with stopping the cluster.
+          # stop_db_cluster produces invalid status exceptions not just for
+          # the database cluster but also for member database instances.
+          # Retry in hopes that all members eventually reach acceptable
+          # statuses. Could call describe_db_instances with
+          #   Filters=[
+          #     {"Name": "db-cluster-id", "Values": [DBClusterIdentifier]},
+          #   ]
+          # but the only benefits, in the rare case of an unrecoverable
+          # member, would be fewer retries and a specific, error-level log
+          # entry instead of a non-specific error (dead letter) queue entry.
           log_level = logging.INFO
           retry = True
         else:
           db_status = get_db_instance_status(lambda_event, describe_db_kwargs)
           (log_level, retry) = assess_db_status(db_status)
+
+      case "InvalidParameterCombination":
+        (log_level, retry) = assess_db_invalid_parameter(error_message)
 
   return (log_level, retry)
 

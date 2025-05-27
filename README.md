@@ -1,6 +1,6 @@
 # stay-stopped-aws-rds-aurora
 
-Stop AWS RDS and Aurora databases after the forced 7-day start
+Stop AWS RDS and Aurora databases after the forced 7th-day start
 
 ## Licenses
 
