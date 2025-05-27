@@ -4,13 +4,12 @@ You can keep an EC2 instance stopped as long as you want, but if you stop an
 RDS or Aurora database, AWS restarts it after 7 days.
 
 It's not possible to stop an RDS or Aurora database longer than 7 days, but
-this tool could be the next best thing. It automatically stops the database
+this tool could be the next best thing; it automatically stops the database
 again.
 
-It's for databases that you use sporadically, including some kinds of
-development and test databases. If it would cost too much to keep a database
-running all the time but take too long to re-create it from scratch, this
-tool might save you money, time, or both.
+It's for databases that you use sporadically, perhaps for development and
+testng. If it would cost too much to keep a database running all the time but
+take too long to re-create it, this tool might save you money, time, or both.
 
 ## Design
 
