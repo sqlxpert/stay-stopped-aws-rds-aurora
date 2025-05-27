@@ -118,7 +118,11 @@ def assess_db_status(db_status):
   log_level = logging.ERROR
   retry = False
 
-  if db_status is not None:
+  if db_status is None:
+    retry = True
+    # Status could not be determined this time
+
+  else:
     match db_status.lower():
       # Unless noted, same status values (normalized to lower case) for
       # Aurora database cluster and RDS database instance.
