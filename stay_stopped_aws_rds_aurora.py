@@ -156,7 +156,7 @@ def assess_db_status(db_status):
 
 
 def assess_stop_db_exception(
-  lambda_event, misc_exception, describe_db_kwargs
+  lambda_event, source_type_word, misc_exception, describe_db_kwargs
 ):
   """Take a boto3 exception, return log level and retry flag
 
@@ -178,8 +178,18 @@ def assess_stop_db_exception(
         (log_level, retry) = assess_db_status(db_status)
 
       case "InvalidDBInstanceState":  # "Fault" suffix is missing here!
-        db_status = get_db_instance_status(lambda_event, describe_db_kwargs)
-        (log_level, retry) = assess_db_status(db_status)
+        if source_type_word == "CLUSTER":
+          # stop_db_cluster sometimes produces exceptions for the database
+          # cluster's database instances. DBClusterIdentifier is known, but
+          # DBInstanceIdentifier would have to be extracted from the error
+          # message, for a describe_db_instances call to get database instance
+          # status. Instead, retry in hopes that the database instance(s)
+          # enter a status compatible with stopping the cluster.
+          log_level = logging.INFO
+          retry = True
+        else:
+          db_status = get_db_instance_status(lambda_event, describe_db_kwargs)
+          (log_level, retry) = assess_db_status(db_status)
 
   return (log_level, retry)
 
@@ -260,7 +270,7 @@ def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
       stop_db_result = op_do(stop_db_method_name, stop_db_kwargs)
       if isinstance(stop_db_result, Exception):
         (log_level, retry) = assess_stop_db_exception(
-          lambda_event, stop_db_result, stop_db_kwargs
+          lambda_event, source_type_word, stop_db_result, stop_db_kwargs
         )
 
       op_log(
