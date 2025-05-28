@@ -78,20 +78,20 @@ Parameters:
     Description: >-
       How many seconds to keep messages (in the error queue). This must be
       greater than QueueMaxReceiveCount * QueueVisibilityTimeoutSecs . For
-      consistency, set this to LogsRetainDays * 86400 or the next largest
-      value allowed by both CloudWatch Logs and SQS. The default, 604800 , is
-      7 days. See MessageRetentionPeriod in
+      consistency, set this to LogRetentionInDays * 86400 or the next largest
+      value allowed by both CloudWatch Logs and SQS. The default, 1209600 , is
+      14 days. See MessageRetentionPeriod in
       https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_SetQueueAttributes.html#API_SetQueueAttributes_RequestParameters
-    Default: 604800
+    Default: 1209600
 
   QueueMessageBytesMax:
     Type: Number
     Description: >-
       The maximum number of bytes in a forced database start event and an AWS
-      Lambda function trigger event
-    MinValue: 1024
-    Default: 16384  # 16 KiB (larger than expected)
-    MaxValue: 262144  # 256 KiB
+      Lambda function trigger event. The default, 32768 bytes, is 32 KiB. See
+      MaximumMessageSize in
+      https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_CreateQueue.html#API_CreateQueue_RequestParameters
+    Default: 32768
 
   SqsKmsKey:
     Type: String
@@ -116,8 +116,9 @@ Parameters:
   LambdaFnReservedConcurrentExecutions:
     Type: Number
     Description: >-
-      How many database stop operations can definitely occur in parallel. To
-      decline access to AWS Lambda reserved concurrency, set this to -1. See
+      How many batches of database start events can definitely be processed in
+      parallel. To decline access to AWS Lambda reserved concurrency, set this
+      to -1. See
       https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html#configuration-concurrency-reserved
     MinValue: -1
     Default: -1
@@ -125,9 +126,10 @@ Parameters:
   LambdaFnMaximumConcurrency:
     Type: Number
     Description: >-
-      How many database stop operations may occur in parallel. The minimum is
-      2. If you set LambdaFnReservedConcurrentExecutions to 2 or more, set
-      this no larger. See
+      How many batches of database start events may be processed in parallel.
+      The minimum is 2. If you set LambdaFnReservedConcurrentExecutions to 2
+      or more, make this no larger than LambdaFnReservedConcurrentExecutions.
+      See
       https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-scaling.html#events-sqs-max-concurrency
     MinValue: 2
     Default: 2
@@ -147,8 +149,10 @@ Parameters:
   LambdaFnBatchSize:
     Type: Number
     Description: >-
-      How many databases to stop in one function invokation. Batching is not
-      important for a sporadic and low-volume workload.
+      How many database start events to process in a single invokation.
+      Batching is not important for a sporadic and low-volume workload. If you
+      change this, consider QueueMessageBytesMax , LambdaFnMemoryMB and
+      LambdaFnTimeoutSecs .
     MinValue: 1
     Default: 1
 
@@ -166,12 +170,15 @@ Parameters:
       case of time-out errors.
     Default: 30
 
-  LogsRetainDays:
+  LogRetentionInDays:
     Type: Number
     Description: >-
-      How many days to keep log entries. See retentionInDays in
-      http://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutRetentionPolicy.html
-    Default: 7
+      How many days to keep log entries. Because AWS starts stopped RDS and
+      Aurora databases after 7 days, set this to the next largest allowed
+      value to preserve information about the previous round of database
+      start events. See retentionInDays in
+      https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutRetentionPolicy.html#API_PutRetentionPolicy_RequestParameters
+    Default: 14
 
   LogLevel:
     Type: String
@@ -244,7 +251,7 @@ Metadata:
       - Label:
           default: CloudWatch log for AWS Lambda function
         Parameters:
-          - LogsRetainDays
+          - LogRetentionInDays
           - LogLevel
           - CloudWatchLogsKmsKey
     ParameterLabels:
@@ -275,12 +282,12 @@ Metadata:
       LambdaFnRoleAttachLocalPolicyName:
         default: Name of local IAM policy to attach to role
       LambdaFnBatchSize:
-        default: Number of databases to stop per invokation
+        default: Batch size
       LambdaFnMemoryMB:
         default: Megabytes of memory
       LambdaFnTimeoutSecs:
         default: Seconds before timeout
-      LogsRetainDays:
+      LogRetentionInDays:
         default: Days before deleting
       LogLevel:
         default: Level of detail
@@ -553,10 +560,10 @@ Resources:
     Type: AWS::Lambda::Permission
     DependsOn: MainQueuePol
     Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref LambdaFn
       Principal: sqs.amazonaws.com
+      Action: lambda:InvokeFunction
       SourceArn: !GetAtt MainQueue.Arn
+      FunctionName: !Ref LambdaFn
 
   AuroraDbForcedStartToMainQueueRule:
     Type: AWS::Events::Rule
@@ -683,6 +690,10 @@ Resources:
               - !Ref SqsKmsKey
       KmsDataKeyReusePeriodSeconds:
         !If [ SqsKmsKeyBlank, !Ref AWS::NoValue, 86400 ]  # seconds (24 hours)
+
+      MaximumMessageSize: !Ref QueueMessageBytesMax
+      # Consider all sources of messages, not just MainQueue!
+
       MessageRetentionPeriod: !Ref ErrorQueueMessageRetentionPeriodSecs
       ReceiveMessageWaitTimeSeconds: 20  # long polling (lowest cost)
       VisibilityTimeout: 0  # seconds; dead message retries don't make sense
@@ -690,7 +701,7 @@ Resources:
   LambdaFnLogGrp:
     Type: AWS::Logs::LogGroup
     Properties:
-      RetentionInDays: !Ref LogsRetainDays
+      RetentionInDays: !Ref LogRetentionInDays
       KmsKeyId:
         Fn::If:
           - CloudWatchLogsKmsKeyBlank
