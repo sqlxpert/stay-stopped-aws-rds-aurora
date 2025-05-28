@@ -1,14 +1,19 @@
 # Stay Stopped, RDS and Aurora!
 
-You can keep an EC2 instance stopped as long as you want, but if you stop an
-RDS or Aurora database, AWS restarts it after 7 days.
-
-It's not possible to stop an RDS or Aurora database longer than 7 days, so
-this tool automatically stops the database again.
+You can keep an EC2 instance stopped as long as you want, but it's not
+possible to stop an RDS or Aurora database longer than 7 days, so this tool
+automatically stops the database again.
 
 It's for databases you use sporadically, perhaps for development and testing.
 If it would cost too much to keep a database running all the time but take too
 long to re-create it, this tool might save you money, time, or both.
+
+AWS does not charge for database instance hours while an
+[RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StopInstance.html#USER_StopInstance.Benefits)
+or
+[Aurora](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-cluster-stop-start.html#aurora-cluster-start-stop-overview)
+database is stopped. (Other charges, such as for database storage and snapshot
+storage, continue.)
 
 ## Design
 
@@ -41,9 +46,9 @@ The design is simple but robust:
   [cost anomaly detection](https://docs.aws.amazon.com/cost-management/latest/userguide/manage-ad.html)
   are still essential.
 
-- It's important to start a database before its maintenance window and leave it
-  running, once in a while. This tool _might_ stop a database right before
-  accumulated maintenance can begin.
+- It's still important to start a database before its maintenance window and
+  leave it running, once in a while. This tool _might_ stop a database right
+  before accumulated maintenance can begin.
 
 ## Quick Start
 
