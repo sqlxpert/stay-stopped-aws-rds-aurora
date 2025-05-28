@@ -2,7 +2,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
 Description: |-
-  Stop AWS RDS and Aurora databases after the forced 7-day start.
+  Stop AWS RDS and Aurora databases after the forced 7th-day start.
 
   github.com/sqlxpert/stay-stopped-aws-rds-aurora GPLv3 Copyright Paul Marcelin
 
