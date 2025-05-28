@@ -3,35 +3,32 @@
 You can keep an EC2 instance stopped as long as you want, but if you stop an
 RDS or Aurora database, AWS restarts it after 7 days.
 
-It's not possible to stop an RDS or Aurora database longer than 7 days, but
-this tool could be the next best thing; it automatically stops the database
-again.
+It's not possible to stop an RDS or Aurora database longer than 7 days, so
+this tool automatically stops the database again.
 
-It's for databases that you use sporadically, perhaps for development and
-testng. If it would cost too much to keep a database running all the time but
-take too long to re-create it, this tool might save you money, time, or both.
+It's for databases you use sporadically, perhaps for development and testing.
+If it would cost too much to keep a database running all the time but take too
+long to re-create it, this tool might save you money, time, or both.
 
 ## Design
 
 The design is simple but robust:
 
 - There are no opt-in or opt-out tags to set. This tool only affects databases
-  that _AWS_ is starting after they've been stopped for 7 days. It listens on
-  the default EventBridge bus for
+  that _AWS_ is starting after they've been stopped for 7 days:
   [RDS-EVENT-0154](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance)
   (RDS)
   and
   [RDS-EVENT-0153](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
   (Aurora).
 
-- Stopping stuff is an inherently idempotent operation: keep trying until it
-  is stopped! Some well-intentioned Step Function solutions introduce an
-  intermittent bug (a
+- Stopping stuff is inherently idempotent: keep trying until it is stopped!
+  Some well-intentioned Step Function solutions introduce an intermittent bug
+  (a
   [race condition](https://en.wikipedia.org/wiki/Race_condition))
   by checking whether a database is ready _before_ trying to stop it. This
   tool intercepts expected, temporary errors and keeps trying every 9 minutes
   until the database is stopped, an unexpected error occurs, or 24 hours pass.
-  In the meantime, event messages stay in the main SQS queue.
 
 - It's not enough to call `stop_db_instance` or `stop_db_cluster` and hope for
   the best. Unlike the typical "Hello, world!"-level AWS Lambda functions
@@ -45,8 +42,8 @@ The design is simple but robust:
   are still essential.
 
 - It's important to start a database before its maintenance window and leave it
-  running, once in a while. This tool _might_ stop a database before a
-  maintenance operation can begin.
+  running, once in a while. This tool _might_ stop a database right before
+  accumulated maintenance can begin.
 
 ## Quick Start
 

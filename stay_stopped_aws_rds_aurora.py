@@ -106,6 +106,9 @@ def get_db_instance_status(lambda_event, describe_db_kwargs):
 def assess_db_status(db_status):
   """Take database status, return log level and retry flag
 
+  Focus is on statuses that might temporarily or permanently preclude
+  stop_db_instance or stop_db_cluster , i.e., not "available".
+
   Aurora database cluster:
     https://docs.aws.amazon.com/en_us/AmazonRDS/latest/AuroraUserGuide/accessing-monitoring.html#Aurora.Status
 
@@ -140,15 +143,19 @@ def assess_db_status(db_status):
         | "resetting-master-credentials"
         | "storage-optimization"
         | "upgrading"
-
         # Aurora database cluster only:
+        | "backtracking"
         | "failing-over"
+        | "migrating"
+        | "promoting"
         | "update-iam-db-auth"
-
         # RDS database instance only:
+        | "converting-to-vpc"
         | "configuring-enhanced-monitoring"
         | "configuring-iam-database-auth"
         | "configuring-log-exports"
+        | "delete-precheck"
+        | "moving-to-vpc"
         | "rebooting"
         | "storage-config-upgrade"
         | "storage-initialization"
@@ -158,6 +165,31 @@ def assess_db_status(db_status):
         # Also monitor error (dead letter) queue; database will not be stopped
         # if operations take longer than VisibilityTimeout * maxReceiveCount
         # (SQS main queue properties in CloudFormation).
+
+      case (
+          "inaccessible-encryption-credentials-recoverable"
+        # RDS database instance only:
+        | "incompatible-network"
+        | "incompatible-option-group"
+        | "incompatible-parameters"
+      ):
+        log_level = logging.ERROR
+        retry = True
+
+      case (
+          "inaccessible-encryption-credentials"
+        # Aurora database cluster only:
+        | "cloning-failed"
+        | "migration-failed"
+        | "preparing-data-migration"
+        # RDS database instance only:
+        | "failed"
+        | "incompatible-restore"
+        | "insufficient-capacity"
+        | "restore-error"
+        | "storage-full"
+      ):
+        pass  # Just wanted to list the known no-retry error conditions!
 
   return (log_level, retry)
 
