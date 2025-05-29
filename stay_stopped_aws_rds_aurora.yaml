@@ -1104,7 +1104,5 @@ Resources:
                 log("SQS_MESSAGE", sqs_message, log_level)
                 log("EXCEPTION", misc_exception, log_level)
 
-            lambda_response = {}
-            if batch_item_failures:
-              lambda_response.update({"batchItemFailures": batch_item_failures, })
-            return lambda_response
+            # https://repost.aws/knowledge-center/lambda-sqs-report-batch-item-failures
+            return {"batchItemFailures": batch_item_failures, }
