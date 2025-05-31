@@ -27,7 +27,7 @@ Jump to:
 The design is simple but robust:
 
 - You can start your database manually or on a schedule (try
-  [github.com/sqlxpert/lights-off-aws](https://github.com/sqlxpert/lights-off-aws#lights-off)
+  [github.com/sqlxpert/lights-off-aws](/../../../lights-off-aws#lights-off)
   !) whenever you like. This tool will not interfere. It only stops databases
   that _AWS_ is starting after they've been stopped for 7 days:
   [RDS-EVENT-0154](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance)
@@ -69,7 +69,7 @@ The design is simple but robust:
     [CloudFormation stack](https://console.aws.amazon.com/cloudformation/home)
     "With new resources (standard)". Select "Upload a template file", then
     select "Choose file" and navigate to a locally-saved copy of
-    [stay_stopped_rds_aurora.yaml](/stay_stopped_rds_aurora.yaml?raw=true)
+    [stay_stopped_rds_aurora.yaml](/stay_stopped_aws_rds_aurora.yaml?raw=true)
     [right-click to save as...]. On the next page, set:
 
     - Stack name: `StayStoppedRdsAurora`
@@ -102,7 +102,7 @@ in each AWS account. To deploy in multiple regions and/or AWS accounts,
     [CloudFormation StackSet](https://console.aws.amazon.com/cloudformation/home#/stacksets).
     Select Upload a template file, then select Choose file and upload a
     locally-saved copy of
-    [stay_stopped_rds_aurora.yaml](/stay_stopped_rds_aurora.yaml?raw=true)
+    [stay_stopped_rds_aurora.yaml](/stay_stopped_aws_rds_aurora.yaml?raw=true)
     [right-click to save as...]. On the next page, set:
 
     - StackSet name: `StayStoppedRdsAurora`
@@ -249,7 +249,7 @@ For further help with testing, temporarily change:
 
 After eliminating local causes such as permissions (especially Service and
 Resource control policies, SCPs or RCPs), please
-[report bugs](/issues).
+[report bugs](/../../issues).
 
 </details>
 
