@@ -20,6 +20,8 @@ Jump to:
 &bull;
 [Multi-Account, Multi-Region](#multi-account-multi-region-installation)
 &bull;
+[Terraform](#installation-with-terraform)
+&bull;
 [Security](#security)
 
 ## Design
@@ -84,7 +86,7 @@ The design is simple but robust:
       below.
 
  4. Optional: Double-check in the
-    [StayStoppedRdsAurora CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-).
+    [StayStopped CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-).
 
 ## Multi-Account, Multi-Region Installation
 
@@ -111,6 +113,20 @@ in each AWS account. To deploy in multiple regions and/or AWS accounts,
     Units. Enter your target `ou-` ID. Stay Stopped will be deployed in all
     AWS accounts in the target OU. Toward the bottom of the page, specify your
     target region(s).
+
+## Installation with Terraform
+
+Terraform users are often willing to wrap a CloudFormation stack in HashiCorp
+Configuration Language, because AWS supplies tools in the form of
+CloudFormation templates. See
+[aws_cloudformation_stack](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack)
+.
+
+Wrapping a CloudFormation StackSet in HCL is much easier than configuring and
+using Terraform to deploy and maintain identical resources in multiple regions
+AWS accounts. See
+[aws_cloudformation_stack_set](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set)
+.
 
 ## Security
 
