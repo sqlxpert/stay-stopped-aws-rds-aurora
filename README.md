@@ -80,9 +80,8 @@ The design is simple but robust:
     [RDS or Aurora database](https://console.aws.amazon.com/rds/home#databases:)
     is in the stopped state.
 
-    - Paul couldn't well call this a "quick start"! If you don't want to wait,
-      see
-      [Troubleshooting and Testing](#troubleshooting-and-testing),
+    - So much for a "quick" start! If you don't want to wait, see
+      [Testing](#testing),
       below.
 
  4. Optional: Double-check in the
