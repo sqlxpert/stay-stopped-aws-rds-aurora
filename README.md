@@ -159,8 +159,9 @@ entirely at your own risk. Paul encourages you to review the source code._
 
 - A concurrency limit, to prevent exhaustion of available Lambda resources.
 
-- Readable IAM policies, formatted as CloudFormation YAML rather than JSON,
-  and broken down into discrete statements by service, resource or principal.
+- Readable Identity and Access Management policies, formatted as
+  CloudFormation YAML rather than JSON, and broken down into discrete
+  statements by service, resource or principal.
 
 ### Security Steps You Can Take
 
@@ -252,7 +253,7 @@ temporarily change `Test` to `true` in CloudFormation, Stay Stoped:
 
 Given the operational and security risks, change `Test` back to `false` to
 **exit test mode as quickly as possible**. Several minutes should be
-sufficient for testing, if you have created a test database in advance.
+sufficient for testing, if you have a test database ready.
 
 Paul recommends testing on an RDS database instance ( `db.t4g.micro` ,
 `20` GiB of gp3 storage, `0` days' worth of automated backups). This is
@@ -266,8 +267,8 @@ For further help with testing, temporarily change:
 - `QueueMaxReceiveCount` from `160` (24 hours, at one retry every 9 minutes)
    to `6` (54 minutes)
 
-After eliminating local causes such as permissions (especially Service and
-Resource control policies, SCPs or RCPs), please
+After ruling out local causes such as permissions &mdash; especially Service
+and Resource control policies (SCPs and RCPs) &mdash; please
 [report bugs](/../../issues).
 
 </details>
