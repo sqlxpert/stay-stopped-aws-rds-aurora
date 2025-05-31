@@ -150,7 +150,7 @@ entirely at your own risk. Paul encourages you to review the source code._
   identifiers and metadata, such as tags. KMS keys housed in a different AWS
   account, and multi-region keys, are supported.
 
-- No data storage other than in the queue and the log, both of which have
+- No data storage other than in the queues and the log, both of which have
   configurable retention periods.
 
 - A retry mechanism (every 9 minutes) and a time limit (24 hours), to increase
@@ -162,7 +162,7 @@ entirely at your own risk. Paul encourages you to review the source code._
   CloudFormation YAML rather than JSON, and broken down into discrete
   statements by service, resource or principal.
 
-### Security Steps You Can Take
+### Your Security Steps
 
 - Prevent people from modifying components of this tool, most of which can be
   identified by `StayStoppedRdsAurora` in ARNs and in the automatic
