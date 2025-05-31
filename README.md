@@ -16,7 +16,7 @@ database is stopped. (Other charges, such as for storage and snapshots,
 will continue.)
 
 Jump to:
-[Getting Started](#getting-started)
+[Get Started](#get-started)
 &bull;
 [Multi-Account, Multi-Region](#multi-account-multi-region-installation)
 &bull;
@@ -59,17 +59,17 @@ The design is simple but robust:
 - It's still important to start a database before its maintenance window and
   leave it running, once in a while.
 
-## Getting Started
+## Get Started
 
  1. Log in to the AWS Console as an administrator. Choose an AWS account and a
     region where you have an RDS or Aurora database that is normally stopped,
     or that you can stop now and leave stopped for 8 days.
 
  2. Create a
-    [CloudFormation stack](https://console.aws.amazon.com/cloudformation/home).
-    Select Upload a template file, then select Choose file and navigate to a
-    locally-saved copy of
-    [stay_stopped_rds_aurora.yaml](/stay_stopped_rds_aurora?raw=true)
+    [CloudFormation stack](https://console.aws.amazon.com/cloudformation/home)
+    "With new resources (standard)". Select "Upload a template file", then
+    select "Choose file" and navigate to a locally-saved copy of
+    [stay_stopped_rds_aurora.yaml](/stay_stopped_rds_aurora.yaml?raw=true)
     [right-click to save as...]. On the next page, set:
 
     - Stack name: `StayStoppedRdsAurora`
@@ -80,7 +80,7 @@ The design is simple but robust:
 
     - Paul couldn't well call this a "quick start"! If you don't want to wait,
       see
-      [Testing and Troubleshooting](#troubleshooting-and-testing),
+      [Troubleshooting and Testing](#troubleshooting-and-testing),
       below.
 
  4. Optional: Double-check in the
@@ -183,7 +183,7 @@ entirely at your own risk. Paul encourages you to review the source code._
 
 Regularly check the:
 
-- [StayStopped CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStopped-)
+- [StayStopped CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-)
   - Log entries are JSON objects.
     - Stay Stopped includes `"level"` , `"type"` and `"value"` keys.
     - Other software components may use different keys.
