@@ -18,9 +18,9 @@ will continue.)
 Jump to:
 [Get Started](#get-started)
 &bull;
-[Multi-Account, Multi-Region](#multi-account-multi-region-installation)
+[Multi-Account, Multi-Region](#multi-account-multi-region)
 &bull;
-[Terraform](#installation-with-terraform)
+[Terraform](#terraform)
 &bull;
 [Security](#security)
 
@@ -87,7 +87,7 @@ The design is simple but robust:
  4. Optional: Double-check in the
     [StayStopped CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-).
 
-## Multi-Account, Multi-Region Installation
+## Multi-Account, Multi-Region
 
 For reliability, Stay Stopped works completely independently in each region,
 in each AWS account. To deploy in multiple regions and/or AWS accounts,
@@ -113,7 +113,7 @@ in each AWS account. To deploy in multiple regions and/or AWS accounts,
     AWS accounts in your target OU. Toward the bottom of the page, specify
     your target region(s).
 
-## Installation with Terraform
+## Terraform
 
 Terraform users are often willing to wrap a CloudFormation stack in HashiCorp
 Configuration Language, because AWS supplies tools in the form of
