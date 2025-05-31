@@ -111,8 +111,8 @@ in each AWS account. To deploy in multiple regions and/or AWS accounts,
 
  4. Two pages later, under Deployment targets, select Deploy to Organizational
     Units. Enter your target `ou-` ID. Stay Stopped will be deployed in all
-    AWS accounts in the target OU. Toward the bottom of the page, specify your
-    target region(s).
+    AWS accounts in your target OU. Toward the bottom of the page, specify
+    your target region(s).
 
 ## Installation with Terraform
 
@@ -146,10 +146,10 @@ entirely at your own risk. Paul encourages you to review the source code._
   error (dead letter) queue if there is a problem. Encryption in transit is
   required.
 
-- Optional encryption at rest with the AWS Key Management System (KMS), for
-  the queues and the log, to protect EventBridge events containing database
-  identifiers and metadata, such as tags. Keys in a different account, and
-  multi-region keys, are supported.
+- Optional encryption at rest with the AWS Key Management System, for the
+  queues and the log. This can protect EventBridge events containing database
+  identifiers and metadata, such as tags. KMS keys housed in a different AWS
+  account, and multi-region keys, are supported.
 
 - No data storage other than in the queue and the log, both of which have
   configurable retention periods.
@@ -190,6 +190,9 @@ entirely at your own risk. Paul encourages you to review the source code._
 - Configure [budget alerts](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-action-configure.html)
   and use
   [cost anomaly detection](https://docs.aws.amazon.com/cost-management/latest/userguide/manage-ad.html).
+
+- Occasionally start a database before its maintenance window and leave it
+  running, to catch up with RDS and Aurora security updates.
 
 </details>
 
