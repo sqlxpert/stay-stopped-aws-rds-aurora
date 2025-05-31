@@ -124,7 +124,7 @@ CloudFormation templates. See
 
 Wrapping a CloudFormation StackSet in HCL is much easier than configuring and
 using Terraform to deploy and maintain identical resources in multiple regions
-AWS accounts. See
+and/or AWS accounts. See
 [aws_cloudformation_stack_set](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set)
 .
 
