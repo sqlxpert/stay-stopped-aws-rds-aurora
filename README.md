@@ -50,9 +50,8 @@ The design is simple but robust:
 - It's not enough to call `stop_db_instance` or `stop_db_cluster` and hope for
   the best. Unlike the typical "Hello, world!"-level AWS Lambda functions
   you'll find &mdash; even in some official AWS re:Post knowledge base
-  solutions &mdash; this tool handles error cases. Look for an error (dead
-  letter) queue message or an `ERROR`-level log entry, in case something
-  unexpected prevented stopping your database.
+  solutions &mdash; this tool handles error cases. Look for a queue message or
+  a log entry, in case something unexpected prevented stopping your database.
   [Budget alerts](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-action-configure.html)
   and
   [cost anomaly detection](https://docs.aws.amazon.com/cost-management/latest/userguide/manage-ad.html)
