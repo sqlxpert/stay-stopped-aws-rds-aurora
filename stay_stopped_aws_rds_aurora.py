@@ -4,21 +4,22 @@
 github.com/sqlxpert/stay-stopped-aws-rds-aurora  GPLv3  Copyright Paul Marcelin
 """
 
-import logging
-import json
-import re
-import botocore
-import boto3
+from logging import getLogger, INFO, WARNING, ERROR
+from json import dumps as json_dumps, loads as json_loads
+from re import match as re_match
+from botocore.exceptions import ClientError as botocore_ClientError
+from botocore.config import Config as botocore_Config
+from boto3 import client as boto3_client
 
-logger = logging.getLogger()
+logger = getLogger()
 # Skip "credentials in environment" INFO message, unavoidable in AWS Lambda:
-logging.getLogger("botocore").setLevel(logging.WARNING)
+getLogger("botocore").setLevel(WARNING)
 
 
 def log(entry_type, entry_value, log_level):
   """Emit a JSON-format log entry
   """
-  entry_value_out = json.loads(json.dumps(entry_value, default=str))
+  entry_value_out = json_loads(json_dumps(entry_value, default=str))
   # Avoids "Object of type datetime is not JSON serializable" in
   # https://github.com/aws/aws-lambda-python-runtime-interface-client/blob/9efb462/awslambdaric/lambda_runtime_log_utils.py#L109-L135
   #
@@ -33,38 +34,17 @@ def log(entry_type, entry_value, log_level):
   )
 
 
-def op_log(
-  lambda_event, op_method_name, op_kwargs, main_entry_value, log_level
-):
-  """Log Lambda function event, boto3 operation kwargs, response or exception
-
-  A response that preceded a downstream error can be logged at log_level
-  logging.ERROR instead of logging.INFO , or an expected exception can be
-  logged at logging.INFO instead of logging.ERROR .
-  """
-  if log_level > logging.INFO:
-    log("LAMBDA_EVENT", lambda_event, log_level)
-  log(f"KWARGS_{op_method_name.upper()}", op_kwargs, log_level)
-  main_entry_type = (
-    "EXCEPTION" if isinstance(main_entry_value, Exception) else "AWS_RESPONSE"
-  )
-  log(main_entry_type, main_entry_value, log_level)
-
-
-# Use "status" except in the context of parsing an Aurora
-# InvalidDBClusterStateFault error message, which refers to "state".
-
-INVALID_DB_CLUSTER_STATE_RE = re.compile(
-  r"DbCluster \S+ is in (?P<db_cluster_state>\S+) state "
-)
-
-
 def extract_db_cluster_state(error_msg):
   """Take an InvalidDBClusterStateFault error message, return cluster state
 
-  None indicates state not found
+  None indicates state not found.
+
+  Use "status" except in the context of parsing an Aurora
+  InvalidDBClusterStateFault error message, which refers to "state".
   """
-  db_cluster_state_re_match = INVALID_DB_CLUSTER_STATE_RE.match(error_msg)
+  db_cluster_state_re_match = re_match(
+    r"DbCluster \S+ is in (?P<db_cluster_state>\S+) state", error_msg
+  )
   return (
     db_cluster_state_re_match.group("db_cluster_state")
     if db_cluster_state_re_match else
@@ -72,31 +52,31 @@ def extract_db_cluster_state(error_msg):
   )
 
 
-def get_db_instance_status(lambda_event, describe_db_kwargs):
+def get_db_instance_status(
+  lambda_event, sqs_message, describe_db_instances_kwargs
+):
   """Take describe_db_instances kwargs, return RDS database instance status
 
-  None indicates an error
+  None indicates an error.
   """
-  log_level = logging.ERROR
+  log_level = ERROR
   db_instance_status = None
 
-  describe_db_method_name = "describe_db_instances"
-  describe_db_result = op_do(
-    describe_db_method_name,
-    describe_db_kwargs
-  )
-  if not isinstance(describe_db_result, Exception):
-    db_instances = describe_db_result.get("DBInstances", [])
+  method_name = "describe_db_instances"
+  result = op_do(method_name, describe_db_instances_kwargs)
+  if not isinstance(result, Exception):
+    db_instances = result.get("DBInstances", [])
     if len(db_instances) == 1:
       db_instance_status = db_instances[0].get("DBInstanceStatus")
       if db_instance_status is not None:
-        log_level = logging.INFO
+        log_level = INFO
 
   op_log(
     lambda_event,
-    describe_db_method_name,
-    describe_db_kwargs,
-    describe_db_result,
+    sqs_message,
+    method_name,
+    describe_db_instances_kwargs,
+    result,
     log_level
   )
 
@@ -106,8 +86,9 @@ def get_db_instance_status(lambda_event, describe_db_kwargs):
 def assess_db_status(db_status):
   """Take database status, return log level and retry flag
 
-  Focus is on statuses that might temporarily or permanently preclude
-  stop_db_instance or stop_db_cluster , i.e., not "available".
+  Focus is on statuses that temporarily or permanently preclude successfully
+  requesting a database stop (i.e., not "available") and then on statuses
+  through to a successful database stop.
 
   Aurora database cluster:
     https://docs.aws.amazon.com/en_us/AmazonRDS/latest/AuroraUserGuide/accessing-monitoring.html#Aurora.Status
@@ -118,24 +99,25 @@ def assess_db_status(db_status):
   RDS database instance:
     https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/accessing-monitoring.html#Overview.DBInstance.Status
   """
-  log_level = logging.ERROR
+  log_level = ERROR
   retry = False
 
   if db_status is None:
     retry = True
-    # Status could not be determined this time
+    # Might be possible to determine status later
 
   else:
     match db_status.lower():
       # Unless noted, same status values (normalized to lower case) for
       # Aurora database cluster and RDS database instance.
 
-      case "deleting" | "deleted" | "stopped":
-        log_level = logging.INFO
+      case "stopped" | "deleting" | "deleted":
+        log_level = INFO
+        # Terinal status, success!
 
       case (
-          "starting"
-        | "stopping"  # To check for successful completion
+          "starting"  # Stop not yet successfully requested
+        | "stopping"  # Stop not yet confirmed
         | "backing-up"
         | "maintenance"
         | "modifying"
@@ -160,11 +142,9 @@ def assess_db_status(db_status):
         | "storage-config-upgrade"
         | "storage-initialization"
       ):
-        log_level = logging.INFO
+        log_level = INFO
         retry = True
-        # Also monitor error (dead letter) queue; database will not be stopped
-        # if operations take longer than VisibilityTimeout * maxReceiveCount
-        # (SQS main queue properties in CloudFormation).
+        # Status will probably change
 
       case (
           "inaccessible-encryption-credentials-recoverable"
@@ -173,8 +153,8 @@ def assess_db_status(db_status):
         | "incompatible-option-group"
         | "incompatible-parameters"
       ):
-        log_level = logging.ERROR
         retry = True
+        # Status might change, but log as ERROR
 
       case (
           "inaccessible-encryption-credentials"
@@ -189,7 +169,8 @@ def assess_db_status(db_status):
         | "restore-error"
         | "storage-full"
       ):
-        pass  # Just wanted to list the known no-retry error conditions!
+        pass
+        # Status won't change; wanted to list known no-retry ERROR conditions
 
   return (log_level, retry)
 
@@ -197,14 +178,14 @@ def assess_db_status(db_status):
 def assess_db_invalid_parameter(error_message):
   """Take InvalidParameterCombination message, return log level and retry flag
   """
-  log_level = logging.ERROR
+  log_level = ERROR
   retry = False
 
   if (
     ("aurora" in error_message)
     and ("not eligible for stopping" in error_message)
   ):
-    log_level = logging.INFO
+    log_level = INFO
     # Quietly ignore database instance-level event for Aurora,
     # because there will be a corresponding database cluster-level event.
     # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
@@ -214,20 +195,27 @@ def assess_db_invalid_parameter(error_message):
 
 
 def assess_stop_db_exception(
-  lambda_event, source_type_word, misc_exception, describe_db_kwargs
+  lambda_event,
+  sqs_message,
+  source_type_word,
+  misc_exception,
+  describe_db_instances_kwargs
 ):
   """Take a boto3 exception, return log level and retry flag
 
   ClientError is general but statically-defined, making comparison
-  easier than for RDS-specific but dynamically-defined exceptions
-  like InvalidDBClusterStateFault and InvalidDBInstanceStateFault .
+  easier than for RDS-specific but dynamically-defined exceptions...
+
+  RDS-specific exception name:  ClientError code:
+  InvalidDBClusterStateFault    InvalidDBClusterStateFault
+  InvalidDBInstanceStateFault   InvalidDBInstanceState (Fault suffix missing!)
 
   https://boto3.amazonaws.com/v1/documentation/api/latest/guide/error-handling.html#parsing-error-responses-and-catching-exceptions-from-aws-services
   """
-  log_level = logging.ERROR
+  log_level = ERROR
   retry = False
 
-  if isinstance(misc_exception, botocore.exceptions.ClientError):
+  if isinstance(misc_exception, botocore_ClientError):
     error_dict = getattr(misc_exception, "response", {}).get("Error", {})
     error_message = error_dict.get("Message", "")
     match error_dict.get("Code"):
@@ -236,23 +224,16 @@ def assess_stop_db_exception(
         db_status = extract_db_cluster_state(error_message)
         (log_level, retry) = assess_db_status(db_status)
 
-      case "InvalidDBInstanceState":  # "Fault" suffix is missing here!
-        if source_type_word == "CLUSTER":
-          # stop_db_cluster produces invalid status exceptions not just for
-          # the database cluster but also for member database instances.
-          # Retry in hopes that all members eventually reach acceptable
-          # statuses. Could call describe_db_instances with
-          #   Filters=[
-          #     {"Name": "db-cluster-id", "Values": [DBClusterIdentifier]},
-          #   ]
-          # but the only benefits, in the rare case of an unrecoverable
-          # member, would be fewer retries and a specific, error-level log
-          # entry instead of a non-specific error (dead letter) queue entry.
-          log_level = logging.INFO
-          retry = True
-        else:
-          db_status = get_db_instance_status(lambda_event, describe_db_kwargs)
-          (log_level, retry) = assess_db_status(db_status)
+      case "InvalidDBInstanceState" if source_type_word == "INSTANCE":  # RDS
+        db_status = get_db_instance_status(
+          lambda_event, sqs_message, describe_db_instances_kwargs
+        )
+        (log_level, retry) = assess_db_status(db_status)
+
+      case "InvalidDBInstanceState":  # Aurora
+        # Status of this and any other cluster members will probably change
+        log_level = INFO
+        retry = True
 
       case "InvalidParameterCombination":
         (log_level, retry) = assess_db_invalid_parameter(error_message)
@@ -276,14 +257,14 @@ def rds_client_get():
   """
   global rds_client  # pylint: disable=global-statement
   if not rds_client:
-    rds_client = boto3.client(
-      "rds", config=botocore.config.Config(retries={"mode": "standard"})
+    rds_client = boto3_client(
+      "rds", config=botocore_Config(retries={"mode": "standard"})
     )
   return rds_client
 
 
 def op_do(op_method_name, op_kwargs):
-  """Take a boto3 method name and kwargs, call, return response or exception
+  """Take a boto3 method name and kwargs, return response or exception
   """
   try:
     op_method = getattr(rds_client_get(), op_method_name)
@@ -293,68 +274,93 @@ def op_do(op_method_name, op_kwargs):
   return op_result
 
 
+def op_log(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+  lambda_event, sqs_message, op_method_name, op_kwargs, result, log_level
+):
+  """Log Lambda event, batch message, boto3 method, kwargs, exception/response
+
+  op_log() is separate from op_do() so that log_level can be decided later:
+  - A result originally logged as INFO can be re-logged as an ERROR after a
+    downstream error occurs.
+  - An expected exception can be logged as INFO instead of an ERROR.
+  """
+  if log_level > INFO:
+    log("LAMBDA_EVENT", lambda_event, log_level)
+    log("SQS_MESSAGE", sqs_message, log_level)
+  if op_method_name:
+    log(f"{op_method_name.upper()}_KWARGS", op_kwargs, log_level)
+  log(
+    "EXCEPTION" if isinstance(result, Exception) else "AWS_RESPONSE",
+    result,
+    log_level
+  )
+
+
 def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
-  """Try to stop Aurora database clusters and RDS database instances
+  """Try to request stopping Aurora database clusters, RDS database instances
 
   Called in response to a batch of forced database start events (see
   EventPattern in CloudFormation) stored as messages in the main SQS queue.
 
   Batch item failure:
-    Event message remains in main queue; retry after VisibilityTimeout ,
-    up to maxReceiveCount (see CloudFormation) total times.
+    Event message remains in main queue. Retry after VisibilityTimeout ,
+    in hopes that database status will change. After maxReceiveCount (see
+    CloudFormation) total tries, message goes to error (dead letter) queue.
 
   Batch item success:
-    Event message deleted from main queue; do not retry, because:
+    Event message is deleted from main queue. Do not retry, because:
       1. Database was already stopped, deleted, or being deleted, or
-      2. It was not possible to request that database be stopped, due to:
+      2. It was not possible to request stopping, due to:
          a. An unexpected error while trying
-            (boto3 handles transient errors; config parameter: retries )
-         b. An error while getting RDS database instance status
-         c. An abnormal, unexpected, or unfamiliar database status
+            (boto3 handles transient errors; see retries config parameter)
+         b. An abnormal database status that won't change or is unfamiliar
   """
-  log("LAMBDA_EVENT", lambda_event, logging.INFO)
+  log("LAMBDA_EVENT", lambda_event, INFO)
   batch_item_failures = []
 
   for sqs_message in lambda_event.get("Records", []):
+    sqs_message_id = ""
+
+    method_name = ""
+    stop_db_kwargs = {}
+    result = None
+    log_level = INFO
+    retry = True
 
     try:
       sqs_message_id = sqs_message["messageId"]
-      db_event = json.loads(sqs_message["body"])
+      db_event = json_loads(sqs_message["body"])
       db_event_detail = db_event["detail"]
-
-      # Events have "CLUSTER" (Aurora) or "DB_INSTANCE" (RDS); take last word
+      # Events have "CLUSTER" (Aurora) or "DB_INSTANCE" (RDS); take last word:
       source_type_word = db_event_detail["SourceType"].split("_")[-1]
       source_identifier = db_event_detail["SourceIdentifier"]
 
-      log_level = logging.INFO
-      retry = True
-
-      stop_db_method_name = f"stop_db_{source_type_word.lower()}"
+      method_name = f"stop_db_{source_type_word.lower()}"
       stop_db_kwargs = {
         f"DB{source_type_word.title()}Identifier": source_identifier,
       }
-      stop_db_result = op_do(stop_db_method_name, stop_db_kwargs)
-      if isinstance(stop_db_result, Exception):
+      result = op_do(method_name, stop_db_kwargs)
+      if isinstance(result, Exception):
         (log_level, retry) = assess_stop_db_exception(
-          lambda_event, source_type_word, stop_db_result, stop_db_kwargs
+          lambda_event, sqs_message, source_type_word, result, stop_db_kwargs
         )
 
-      op_log(
-        lambda_event,
-        stop_db_method_name,
-        stop_db_kwargs,
-        stop_db_result,
-        log_level
-      )
-
-      if retry:
-        batch_item_failures.append({"itemIdentifier": sqs_message_id, })
-
     except Exception as misc_exception:  # pylint: disable=broad-exception-caught
-      log_level = logging.ERROR
-      log("LAMBDA_EVENT", lambda_event, log_level)
-      log("SQS_MESSAGE", sqs_message, log_level)
-      log("EXCEPTION", misc_exception, log_level)
+      result = misc_exception
+      log_level = ERROR
+      retry = False
+
+    op_log(
+      lambda_event,
+      sqs_message,
+      method_name,
+      stop_db_kwargs,
+      result,
+      log_level
+    )
+
+    if retry and sqs_message_id:
+      batch_item_failures.append({"itemIdentifier": sqs_message_id})
 
   # https://repost.aws/knowledge-center/lambda-sqs-report-batch-item-failures
-  return {"batchItemFailures": batch_item_failures, }
+  return {"batchItemFailures": batch_item_failures}
