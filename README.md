@@ -231,7 +231,7 @@ Check the:
 
 AWS starts RDS and Aurora databases that have been stopped for 7 days, but we
 need a faster mechanism for realistic, end-to-end testing. When you
-temporarily change `Test` to `true` in CloudFormation, Stay Stoped:
+temporarily change `Test` to `true` in CloudFormation, Stay Stopped:
 
 - Responds to user-initiated, non-forced database starts:
   [RDS-EVENT-0088](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance)
