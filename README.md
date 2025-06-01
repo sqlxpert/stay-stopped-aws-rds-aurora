@@ -41,21 +41,82 @@ The design is simple but robust:
   [RDS-EVENT-0153](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
   (Aurora).
   You do not need to set any opt-in or opt-out tags. As long as _you_, rather
-  than _AWS_, started your database, this tool will not stop it.
+  than _AWS_, started your database this time, Stay Stopped won't stop it.
 
 - Stopping stuff is inherently idempotent: keep trying until it is stopped!
-  Some well-intentioned Step Function solutions introduce an intermittent bug
-  (a
+  Some otherwise very intenti solutions introduce a latent bug (a
   [race condition](https://en.wikipedia.org/wiki/Race_condition))
   by checking whether a database is ready _before_ trying to stop it. This
   tool tries every 9 minutes until the database is stopped, an unexpected
   error occurs, or 24 hours pass.
 
+  <details>
+    <summary>About idempotence and latent bugs...</summary>
+
+  Here are two of the best solutions found online for keeping an RDS or Aurora
+  database stopped, one singled out for its simplicity and the other, for its
+  thoroughness. The artifacts are from May, 2025, and newer versions may be
+  available by the time you read this.
+
+  [Stop Amazon RDS/Aurora Whenever They Start](https://aws.plainenglish.io/stop-amazon-rds-aurora-whenever-they-start-with-lambda-and-eventbridge-c8c1a88f67d6)
+  \[[code](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f)\]
+  by shimo, from the _AWS In Plain English_ blog on Medium, avoids the
+  complexity of an AWS Step Function or an SQS queue. The single Lambda
+  function checks that the database is `available` before stopping it
+  ([L48-L51](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f#file-lambda_stop_rds-py-L48-L51)).
+  If not, the code waits
+  ([L63-L65](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f#file-lambda_stop_rds-py-L63-L65))
+  and checks again
+  ([L76-L78](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f#file-lambda_stop_rds-py-L76-L78)).
+  After the database finishes `starting` and becomes `available`, what if a
+  long `maintenance` procedure begins _before_ the next status check? What if
+  the database just takes long to start? "The startup process can take minutes
+  to hours", according to the
+  [RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StartInstance.html).
+  There might not be time to stop the database before the
+  [15-minute Lambda time-out](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html)!
+
+  [Stopping an Automatically Started Database Instance](https://aws.amazon.com/jp/blogs/architecture/field-notes-stopping-an-automatically-started-database-instance-with-amazon-rds/)
+  \[[code](https://github.com/aws-samples/amazon-rds-auto-restart-protection/tree/cfdd3a1)\]
+  by Islam Ghanim, on AWS's own _Architecture Blog_, uses a Step Function
+  to increase reliability by seeing the stop attempt through until the
+  database's status changes from `stopping` to `stopped`. Before attempting
+  to stop the database, the state machine waits as long as it takes for the
+  database to become `available`. After the database finishes `starting` and
+  becomes `available`, what if an independent person or automated system
+  deletes it? That's far-fetched, but what if the independent actor simply
+  _stops_ the database before the next status check? Because `available` is
+  the only non-error way out of the status check loop
+  ([stop-rds-instance-state-machine.json, L30-L40](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/48e0587/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L30-L40)),
+  and no
+  [timeout](https://docs.aws.amazon.com/step-functions/latest/dg/statemachine-structure.html#statemachinetimeoutseconds)
+  is defined at the top level
+  ([L1-L4](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/48e0587/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L1-L4)),
+  the Step Function would keep running until AWS starts the database again
+  next week. With a status check every 5 minutes, that's a lot of Lambda time!
+
+  ![retrieveRdsInstanceState, isInstanceAvailable, and waitFiveMinutes are joined in a loop. The only exit paths are from isInstanceAvailable to stopRdsInstance if rdsInstanceState is "available"; and from retrieveRdsInstanceState and stopRdsInstance to fallback, if an error is caught](media/stop-rds-instance-state-machine-part.png "Part of the AWS Architecture Blog solution's state machine")
+
+  The point is certainly not to criticize. Rather, it's to demonstrate that
+  the problem is not as simple as it seemed originally. The pitfalls, and the
+  ways to solve them, apply to many of the distributed computing problems that
+  we work on. Each professional who tackles a problem contributes a piece of
+  the puzzle, and we learn from each other. Please get in touch if you have
+  ideas for improving Stay Stopped!
+
+  For further reading:
+
+  - [Making retries safe with idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
+    by Malcolm Featonby, in the _Amazon Builder's Library_.
+
+  - [Idempotence: Doing It More than Once](https://sqlxpert.github.io/2025/05/17/idempotence-doing-it-more-than-once.html),
+    by yours truly.
+
+  </details>
+
 - It's not enough to call `stop_db_instance` or `stop_db_cluster` and hope for
-  the best. Unlike the typical "Hello, world!"-level AWS Lambda functions
-  you'll find &mdash; even in some official AWS re:Post knowledge base
-  solutions &mdash; this tool handles error cases. Look for a queue message or
-  a log entry, in case something unexpected prevented stopping your database.
+  the best. This tool handles error cases. Look for a queue message or a log
+  entry, in case something unexpected prevented stopping your database.
   [Budget alerts](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-action-configure.html)
   and
   [cost anomaly detection](https://docs.aws.amazon.com/cost-management/latest/userguide/manage-ad.html)
@@ -260,7 +321,7 @@ be sufficient.
 
 ### Test by Manually Starting a Database
 
-In test mode, this tool responds to user-initiated, non-forced database
+In test mode, Stay Stopped responds to user-initiated, non-forced database
 starts:
 [RDS-EVENT-0088](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance)
 (RDS)
