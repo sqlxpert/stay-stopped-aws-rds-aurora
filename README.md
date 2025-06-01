@@ -1,8 +1,9 @@
 # Stay Stopped, RDS and Aurora!
 
 You can keep an EC2 compute instance stopped as long as you want, but it's not
-possible to stop an RDS or Aurora database longer than 7 days. When AWS starts
-your database on the 7th day, this tool automatically stops it again.
+possible to stop an RDS database instance or an Aurora database cluster longer
+than 7 days. After AWS starts your database on the 7th day, this tool
+automatically stops it again.
 
 It's for databases you use sporadically, maybe for development and testing. If
 it would cost too much to keep a database running all the time but take too
@@ -12,8 +13,8 @@ AWS does not charge for database instance hours while an
 [RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StopInstance.html#USER_StopInstance.Benefits)
 or
 [Aurora](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-cluster-stop-start.html#aurora-cluster-start-stop-overview)
-database is stopped. (Other charges, such as for storage and snapshots,
-will continue.)
+database is stopped. (Other charges, such as for storage and snapshots, will
+continue.)
 
 Jump to:
 [Get Started](#get-started)
@@ -30,7 +31,7 @@ The design is simple but robust:
 
 - You can start your database manually or on a schedule (try
   [github.com/sqlxpert/lights-off-aws](/../../../lights-off-aws#lights-off)
-  !) whenever you like. This tool will not interfere.
+  !), whenever you like.
 
 - This tool only stops databases that _AWS_ is starting after they've been
   stopped for 7 days:
@@ -40,15 +41,15 @@ The design is simple but robust:
   [RDS-EVENT-0153](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
   (Aurora).
   You do not need to set any opt-in or opt-out tags. As long as _you_, rather
-  than _AWS_, started your database, this tool will not try to stop it.
+  than _AWS_, started your database, this tool will not stop it.
 
 - Stopping stuff is inherently idempotent: keep trying until it is stopped!
   Some well-intentioned Step Function solutions introduce an intermittent bug
   (a
   [race condition](https://en.wikipedia.org/wiki/Race_condition))
   by checking whether a database is ready _before_ trying to stop it. This
-  tool intercepts temporary errors and keeps trying every 9 minutes until the
-  database is stopped, an unexpected error occurs, or 24 hours pass.
+  tool tries every 9 minutes until the database is stopped, an unexpected
+  error occurs, or 24 hours pass.
 
 - It's not enough to call `stop_db_instance` or `stop_db_cluster` and hope for
   the best. Unlike the typical "Hello, world!"-level AWS Lambda functions
@@ -80,19 +81,18 @@ The design is simple but robust:
 
  3. Wait 8 days, then check that your
     [RDS or Aurora database](https://console.aws.amazon.com/rds/home#databases:)
-    is in the stopped state.
-
-    - So much for a "quick" start! If you don't want to wait, see
-      [Testing](#testing),
-      below.
+    is in the stopped state. So much for a "quick" start! If you don't want to
+    wait, see
+    [Testing](#testing),
+    below.
 
  4. Optional: Double-check in the
     [StayStopped CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-).
 
 ## Multi-Account, Multi-Region
 
-For reliability, Stay Stopped works completely independently in each region,
-in each AWS account. To deploy in multiple regions and/or AWS accounts,
+For reliability, Stay Stopped works completely independently in each region, in
+each AWS account. To deploy in multiple regions and/or AWS accounts,
 
  1. Delete any standalone `StayStoppedRdsAurora` CloudFormation _stacks_ in
     your target regions and/or AWS accounts.
@@ -103,17 +103,17 @@ in each AWS account. To deploy in multiple regions and/or AWS accounts,
  3. In the management AWS account (or a delegated administrator account),
     create a
     [CloudFormation StackSet](https://console.aws.amazon.com/cloudformation/home#/stacksets).
-    Select Upload a template file, then select Choose file and upload a
+    Select "Upload a template file", then select "Choose file" and upload a
     locally-saved copy of
     [stay_stopped_rds_aurora.yaml](/stay_stopped_aws_rds_aurora.yaml?raw=true)
     [right-click to save as...]. On the next page, set:
 
     - StackSet name: `StayStoppedRdsAurora`
 
- 4. Two pages later, under Deployment targets, select Deploy to Organizational
-    Units. Enter your target `ou-` ID. Stay Stopped will be deployed in all
-    AWS accounts in your target OU. Toward the bottom of the page, specify
-    your target region(s).
+ 4. Two pages later, under "Deployment targets", select "Deploy to
+    Organizational Units". Enter your target `ou-` identifier. Stay Stopped
+    will be deployed in all AWS accounts in your target OU. Toward the bottom
+    of the page, specify your target region(s).
 
 ## Terraform
 
@@ -175,13 +175,13 @@ entirely at your own risk. Paul encourages you to review the source code._
 - Prevent people from directly invoking the Lambda function and from passing
   the function role to arbitrary functions.
 
-- Separate production workloads. Although this tool only affects databases
-  that _AWS_ is starting after they've been stopped for 7 days, the Lambda
-  function has permission to stop any RDS or Aurora database and could do so
-  if invoked directly, with a contrived event as input. You might choose not
-  to deploy this tool in AWS accounts used for production, or you might add a
-  custom IAM policy to the function role, denying authority to stop certain
-  production databases (`AttachLocalPolicy` in CloudFormation).
+- Separate production workloads. Although this tool only stops databases that
+  _AWS_ is starting after they've been stopped for 7 days, the Lambda function
+  could stop _any_ database if invoked directly, with a contrived event as
+  input. You might choose not to deploy this tool in AWS accounts used for
+  production, or you might add a custom IAM policy to the function role,
+  denying authority to stop certain production databases (`AttachLocalPolicy`
+  in CloudFormation).
 
 - Enable the test mode only in a non-critical AWS account and region, and turn
   the test mode off again as quickly as possible.
@@ -203,23 +203,24 @@ entirely at your own risk. Paul encourages you to review the source code._
 Check the:
 
 - [StayStopped CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-)
+  - Scrutinize log entries at the `ERROR` level:
+    - One `InvalidDBInstanceState` or `InvalidDBClusterStateFault` entry:
+      A database could not be stopped because it was in a highly irregular
+      state.
+    - Multiple `InvalidDBInstanceState` or `InvalidDBClusterStateFault`
+      entries for the same database:
+      The database was in an irregular but potentially recoverable state. Stay
+      Stopped retries every 9 minutes, until 24 hours have passed.
   - Log entries are JSON objects.
     - Stay Stopped includes `"level"` , `"type"` and `"value"` keys.
     - Other software components may use different keys.
   - For more data, change the `LogLevel` in CloudFormation.
-  - Scrutinize log entries at the `ERROR` level.
-    - One `InvalidDBInstanceState` or `InvalidDBClusterStateFault` entry at
-      the `ERROR` level indicates that a database could not be stopped because
-      it was in a highly irregular state. Multiple such entries for the same
-      resource indicate that a database was in an irregular but potentially
-      recoverable state. Stay Stopped retries every 9 minutes, until 24 hours
-      have passed.
 - `ErrorQueue` (dead letter)
   [SQS queue](https://console.aws.amazon.com/sqs/v3/home#/queues)
-  - Queue messages are EventBridge events for RDS or Aurora forced database
-    start.
   - A message in this queue indicates that Stay Stopped could not stop a
     database after trying for 24 hours.
+  - Queue messages are EventBridge events for RDS or Aurora forced database
+    start.
 - [CloudTrail Event history](https://console.aws.amazon.com/cloudtrailv2/home?ReadOnly=false/events?ReadOnly=false)
   - CloudTrail events with an "Error code" may indicate permissions problems.
   - To see more events, change "Read-only" from `false` to `true` .
@@ -229,66 +230,116 @@ Check the:
 <details>
   <summary>Testing details...</summary>
 
+### Recommended Test Database
+
+An RDS database instance ( `db.t4g.micro` , `20` GiB of gp3 storage, `0` days'
+worth of automated backups) is cheaper than a typical Aurora cluster, not to
+mention faster to create, stop, and start.
+
+### Test Mode
+
 AWS starts RDS and Aurora databases that have been stopped for 7 days, but we
-need a faster mechanism for realistic, end-to-end testing. When you
-temporarily change `Test` to `true` in CloudFormation, Stay Stopped:
+need a faster mechanism for realistic, end-to-end testing. Temporarily change
+these parameters in CloudFormation:
 
-- Responds to user-initiated, non-forced database starts:
-  [RDS-EVENT-0088](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance)
-  (RDS)
-  and
-  [RDS-EVENT-0151](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
-  (Aurora). Although Stay Stopped won't stop databases that have already been
-  started, it **will stop any database that you create or start**.
+|Parameter|Normal|Test|
+|:---|:---:|:---:|
+|`Test`|`false`|`true`|
+|`LogLevel`|`ERROR`|`INFO`|
+|`QueueVisibilityTimeoutSecs`|`540`|`60`|
+||Retry every 9 minutes|Retry every 1 minute|
+|`QueueMaxReceiveCount`|`160`|`30`|
+||24 hours, at one retry every 9 minutes|30 minutes, at one retry every 1 minute|
 
-- Relaxes the queue policy for the main SQS queue, allowing message sources
-  other than EventBridge, and targets other than the Lambda function or the
-  error (dead letter) queue. Using the AWS Console, you can send test
-  EventBridge event messages to stop particular databases. In the list of
-  [SQS queues](https://console.aws.amazon.com/sqs/v3/home#/queues),
-  select `StayStoppedRdsAurora-MainQueue` and then select the "Send and
-  receive messages" button above the list. You can "Send message". If
-  necessary, you can also "Poll for messages", select a message, read it and
-  delete it.
+Given the operational and security risks explained below, **exit test mode as
+quickly as possible**. If your test database is ready, several minutes should
+be sufficient.
 
-Given the operational and security risks, change `Test` back to `false` to
-**exit test mode as quickly as possible**. Several minutes should be
-sufficient, if you have a test database ready.
+### Test by Manually Starting a Database
 
-Paul recommends testing on an RDS database instance ( `db.t4g.micro` ,
-`20` GiB of gp3 storage, `0` days' worth of automated backups). This is
-cheaper than a typical Aurora cluster, not to mention faster to create, stop,
-and start.
+In test mode, this tool responds to user-initiated, non-forced database
+starts:
+[RDS-EVENT-0088](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance)
+(RDS)
+and
+[RDS-EVENT-0151](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
+(Aurora). Although this tool won't stop databases that have already been
+started, it **will stop any database that you create or start**. To test,
+manually start a stopped
+[RDS or Aurora database](https://console.aws.amazon.com/rds/home#databases:).
 
-You can insert the names of your RDS database instance and Aurora database
-cluster and use the following as a minimal Lambda function test event:
+### Test by Sending a Message
+
+Test mode relaxes the queue policy for the main SQS queue, allowing sources
+other than EventBridge, and targets other than the Lambda function or the
+error (dead letter) queue. Test by using the AWS Console to send a simulated
+EventBridge event message. In the list of
+[SQS queues](https://console.aws.amazon.com/sqs/v3/home#/queues),
+select `StayStoppedRdsAurora-MainQueue` and then select the "Send and receive
+messages" button above the list. You can:
+
+- "Send message", or
+- "Poll for messages", select a message, read it and delete it, or
+- "Purge" all messages.
+
+Edit the database names in these test messages:
+
+```json
+{
+  "detail": {
+    "SourceIdentifier": "NAME_OF_YOUR_RDS_DATABASE_INSTANCE",
+    "SourceType": "DB_INSTANCE",
+    "EventID": "RDS-EVENT-0154"
+  },
+  "detail-type": "RDS DB Instance Event",
+  "source": "aws.rds",
+  "version": "0"
+}
+```
+
+```json
+{
+  "detail": {
+    "SourceIdentifier": "NAME_OF_YOUR_AURORA_DATABASE_INSTANCE",
+    "SourceType": "CLUSTER",
+    "EventID": "RDS-EVENT-0153"
+  },
+  "detail-type": "RDS DB Cluster Event",
+  "source": "aws.rds",
+  "version": "0"
+}
+```
+
+### Test by Invoking the Lambda Function
+
+Depending on locally-determined permissions, you may also be able to invoke
+the
+[StayStopped Lambda function](https://console.aws.amazon.com/lambda/home#/functions?fo=and&o0=%3A&v0=StayStoppedRdsAurora-LambdaFn-)
+manually. Edit the database names in this Lambda test event:
 
 ```json
 {
   "Records": [
     {
-      "messageId": "8314a964-e5b5-479a-8abe-b1954b1e8020",
-      "body": "{ \"version\": \"0\", \"source\": \"aws.rds\", \"detail-type\": \"RDS DB Instance Event\", \"detail\": { \"SourceIdentifier\": \"MY_RDS_DATABASE_INSTANCE\", \"SourceType\": \"DB_INSTANCE\", \"EventID\": \"RDS-EVENT-0154\" } }"
+      "body": "{ \"detail\": { \"SourceIdentifier\": \"NAME_OF_YOUR_RDS_DATABASE_INSTANCE\", \"SourceType\": \"DB_INSTANCE\", \"EventID\": \"RDS-EVENT-0154\" }, \"detail-type\": \"RDS DB Instance Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
+      "messageId": "test-message-1-rds"
     },
     {
-      "messageId": "8314a964-e5b5-479a-8abe-b1954b1e8021",
-      "body": "{ \"version\": \"0\", \"source\": \"aws.rds\", \"detail-type\": \"RDS DB Cluster Event\", \"detail\": { \"SourceIdentifier\": \"MY_AURORA_DATABASE_CLUSTER\", \"SourceType\": \"CLUSTER\", \"EventID\": \"RDS-EVENT-0153\" } }"
+      "body": "{ \"detail\": { \"SourceIdentifier\": \"NAME_OF_YOUR_AURORA_DATABASE_INSTANCE\", \"SourceType\": \"CLUSTER\", \"EventID\": \"RDS-EVENT-0153\" }, \"detail-type\": \"RDS DB Cluster Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
+      "messageId": "test-message-2-aurora"
     }
   ]
 }
-
 ```
 
-For further help with testing, temporarily change:
+### Report Bugs
 
-- `LogLevel` from `ERROR` to `INFO`
-- `QueueVisibilityTimeoutSecs` from `540` to `60`
-- `QueueMaxReceiveCount` from `160` (24 hours, at one retry every 9 minutes)
-   to `6` (54 minutes)
-
-After ruling out local causes such as permissions &mdash; especially Service
-and Resource control policies (SCPs and RCPs) &mdash; please
-[report bugs](/../../issues).
+After following the
+[troubleshooting](#troubleshooting)
+steps and ruling out local issues such as permissions &mdash; especially
+hidden controls such as Service and Resource control policies (SCPs and RCPs)
+&mdash; please
+[report bugs](/../../issues). Thank you!
 
 </details>
 
