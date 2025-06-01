@@ -29,9 +29,9 @@ Jump to:
 
 The design is simple but robust:
 
-- You can start your database manually or on a schedule (try
+- You can start your database manually or on a schedule (check out
   [github.com/sqlxpert/lights-off-aws](/../../../lights-off-aws#lights-off)
-  !), whenever you like.
+  ! ), whenever you like.
 
 - This tool only stops databases that _AWS_ is starting after they've been
   stopped for 7 days:
@@ -204,13 +204,16 @@ Check the:
 
 - [StayStopped CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-)
   - Scrutinize log entries at the `ERROR` level:
-    - One `InvalidDBInstanceState` or `InvalidDBClusterStateFault` entry:
+
+    `InvalidDBInstanceState` or `InvalidDBClusterStateFault` :
+
+    - One time:
       A database could not be stopped because it was in a highly irregular
       state.
-    - Multiple `InvalidDBInstanceState` or `InvalidDBClusterStateFault`
-      entries for the same database:
+    - Multiple times for the same database:
       The database was in an irregular but potentially recoverable state. Stay
       Stopped retries every 9 minutes, until 24 hours have passed.
+
   - Log entries are JSON objects.
     - Stay Stopped includes `"level"` , `"type"` and `"value"` keys.
     - Other software components may use different keys.
