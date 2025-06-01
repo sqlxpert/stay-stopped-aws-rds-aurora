@@ -319,6 +319,7 @@ def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
   batch_item_failures = []
 
   for sqs_message in lambda_event.get("Records", []):
+    log("SQS_MESSAGE", sqs_message, INFO)
     sqs_message_id = ""
 
     method_name = ""
