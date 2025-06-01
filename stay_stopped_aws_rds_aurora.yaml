@@ -36,9 +36,8 @@ Parameters:
     Description: >-
       Whether to add Aurora database cluster and RDS database instance
       non-forced start events for temporary testing, and relax the queue
-      policy for the main SQS queue so that sources other than EventBridge
-      can send event messages and targets other than the AWS Lambda function
-      and the error (dead letter) queue can read and delete messages.
+      policy for the main SQS queue so that users can send, read, and delete
+      messages, for example, using the AWS Console or the AWS ClI.
       Tip:
       Temporarily reducing QueueVisibilityTimeoutSecs and
       QueueMaxReceiveCount , and changing LogLevel to "INFO", also facilitates
@@ -154,7 +153,7 @@ Parameters:
       change this, consider QueueMessageBytesMax , LambdaFnMemoryMB and
       LambdaFnTimeoutSecs .
     MinValue: 1
-    Default: 1
+    Default: 2
 
   LambdaFnMemoryMB:
     Type: Number
