@@ -31,7 +31,7 @@ Jump to:
 
 ## Design
 
-[<img src="media/stay-stopped-aws-rds-aurora-simple-flow.png" alt="Call to stop the Aurora or RDS database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. If the database status from Case 2 or 3 is not final (that is, not 'stopped', 'deleting', or 'deleted'), retry. Retries occur every 9 minutes for 24 hours." width="460"/>](media/stay-stopped-aws-rds-aurora-simple-flow.png "Simplified flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-simple-flow.png" alt="Call to stop the Aurora or RDS database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. If the database status from Case 2 or 3 is not final (that is, not 'stopped', 'deleting', or 'deleted'), retry. Retries occur every 9 minutes for 24 hours." width="465" />](media/stay-stopped-aws-rds-aurora-flow-simple.png "Simplified flowchart for Stay Stopped, RDS and Aurora!")
 
 The design is simple but robust:
 
@@ -144,7 +144,7 @@ The design is simple but robust:
 <details>
   <summary>View the full architecture diagram/flowchart...</summary>
 
-<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow.png" alt="EventBridge events 0153 and 0154 (database started after exceeding 7-day maximum stop time) go to main SQS queue. AWS Lambda function stops the Aurora cluster or RDS instance. If database status is invalid, message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' stops retries, as does a serious error. After 160 tries (24 hours), message goes to error (dead letter) queue." width="550">
+[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow.png" alt="EventBridge events 0153 and 0154 (database started after exceeding 7-day maximum stop time) go to main SQS queue. AWS Lambda function stops the Aurora cluster or RDS instance. If database status is invalid, message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' stops retries, as does a serious error. After 160 tries (24 hours), message goes to error (dead letter) queue." width="550" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
 
 </details>
 
