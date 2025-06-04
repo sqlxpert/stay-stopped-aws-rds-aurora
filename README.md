@@ -1,5 +1,9 @@
 # Stay Stopped, RDS and Aurora!
 
+Reliably keep databases stopped when not needed, to save money
+
+## Purpose
+
 You can keep an EC2 compute instance stopped as long as you want, but it's not
 possible to stop an RDS database instance or an Aurora database cluster longer
 than 7 days. After AWS starts your database on the 7th day, this tool
