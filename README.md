@@ -98,11 +98,11 @@ The design is simple but robust:
       database is now `available`, gets impatient, and stops it manually
       instead of waiting? Barring an error, `available` is the _only_ way out
       of the status-checking loop
-      ([stop-rds-instance-state-machine.json, L30-L40](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/48e0587/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L30-L40)).
+      ([stop-rds-instance-state-machine.json, L30-L40](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/cfdd3a1/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L30-L40)).
       No
       [overall state machine timeout](https://docs.aws.amazon.com/step-functions/latest/dg/statemachine-structure.html#statemachinetimeoutseconds)
       is defined
-      ([L1-L4](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/48e0587/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L1-L4)).
+      ([L1-L4](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/cfdd3a1/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L1-L4)).
       The Step Function would keep checking every 5 minutes for a status that
       won't recur until AWS starts the database again in 7 days or, worse yet,
       someone starts the database manually _with the intention of using it_.
