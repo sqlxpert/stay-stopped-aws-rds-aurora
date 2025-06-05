@@ -186,10 +186,20 @@ def assess_db_invalid_parameter(error_message):
     and ("not eligible for stopping" in error_message)
   ):
     log_level = INFO
-    # Quietly ignore database instance-level event for Aurora,
-    # because there will be a corresponding database cluster-level event.
-    # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
+    # Quietly ignore database instance start events for Aurora,
+    # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0088
+    #
+    # ...because there will be a corresponding database cluster event,
+    # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0151
+    #
+    # ...and Aurora database instances cannot be stopped independently of
+    # their Aurora cluster, per:
     # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-cluster-stop-start.html#aurora-cluster-start-stop-overview
+    #
+    # This case occurs only in test mode. At the EventPattern level (see
+    # CloudFormation), the start event for Aurora database instances is
+    # indistinguishable from the start event for RDS database instances,
+    # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0088
 
   return (log_level, retry)
 
