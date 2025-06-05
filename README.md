@@ -286,7 +286,7 @@ entirely at your own risk. Paul encourages you to review the source code._
 
 Check the:
 
-- [StayStopped CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-)
+- [StayStoppedRdsAurora-LambdaFn CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-LambdaFn)
   - Scrutinize log entries at the `ERROR` level:
 
     `InvalidDBInstanceState` or `InvalidDBClusterStateFault` :
@@ -301,7 +301,7 @@ Check the:
     - Stay-Stopped includes `"level"` , `"type"` and `"value"` keys.
     - Other software components may use different keys.
   - For more data, change the `LogLevel` in CloudFormation.
-- `ErrorQueue` (dead letter)
+- `StayStoppedRdsAurora-ErrorQueue` (dead letter)
   [SQS queue](https://console.aws.amazon.com/sqs/v3/home#/queues)
   - The presence of a message in this queue means that Stay-Stopped did not
     stop a database, usually after trying for 24 hours.
@@ -339,13 +339,13 @@ these parameters in CloudFormation:
 |`Test`|`false`|`true`|
 |`LogLevel`|`ERROR`|`INFO`|
 |`QueueVisibilityTimeoutSecs`|`540`|`60`|
-||Retry every 9 minutes|Retry every 1 minute|
+|_Equivalent in minutes_|_9 minutes_|_1 minute_|
 |`QueueMaxReceiveCount`|`160`|`30`|
-||24 hours, at one retry every 9 minutes|30 minutes, at one retry every 1 minute|
+|_Equivalent time_|_24 hours_|_30 minutes_|
 
-Given the operational and security risks explained below, **exit test mode as
-quickly as possible**. If your test database is ready, several minutes should
-be sufficient.
+Given the operational and security risks explained below, **&#9888; exit test
+mode as quickly as possible**. If your test database is ready, several minutes
+should be sufficient.
 
 ### Test by Manually Starting a Database
 
@@ -355,8 +355,8 @@ starts, too:
 and
 [RDS-EVENT-0151](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
 (Aurora database cluster). Although Stay-Stopped won't stop databases that
-are already running and remain running, in test mode it **will stop any
-database that you create or start** &#9888;. To test, manually start a stopped
+are already running and remain running, while in test mode it **will stop any
+database that you create or start &#9888;**. To test, manually start a stopped
 [RDS or Aurora database](https://console.aws.amazon.com/rds/home#databases:).
 
 > In test mode, Stay-Stopped also receives
