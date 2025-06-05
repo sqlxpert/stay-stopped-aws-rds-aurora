@@ -1,24 +1,22 @@
 # Stay Stopped, RDS and Aurora!
 
-Reliably keep databases stopped when not needed, to save money
+Reliably keep AWS databases stopped when not needed, to save money
 
 ## Purpose
 
 You can keep an EC2 compute instance stopped as long as you want, but it's not
-possible to stop an RDS database instance or an Aurora database cluster longer
-than 7 days. After AWS starts your database on the 7th day, this tool
-automatically stops it again.
+possible to stop an RDS or Aurora database longer than 7 days. After AWS
+starts your database on the 7th day, this tool automatically stops it again.
 
-It's for databases you use sporadically, maybe for development and testing. If
-it would cost too much to keep a database running all the time but take too
+Stay Stopped is for databases you use sporadically, perhaps for development
+and testing. If it would cost too much to keep a database running but take too
 long to re-create it, this tool might save you money, time, or both.
 
 AWS does not charge for database instance hours while an
-[RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StopInstance.html#USER_StopInstance.Benefits)
-or
-[Aurora](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-cluster-stop-start.html#aurora-cluster-start-stop-overview)
-database is stopped. (Other charges, such as for storage and snapshots, will
-continue.)
+[RDS database instance is stopped](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StopInstance.html#USER_StopInstance.Benefits)
+or an
+[Aurora database cluster is stopped](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-cluster-stop-start.html#aurora-cluster-start-stop-overview).
+(Other charges, such as for storage and snapshots, continue.)
 
 Jump to:
 [Get Started](#get-started)
@@ -31,7 +29,7 @@ Jump to:
 
 ## Design
 
-[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Aurora or RDS database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. If the database status from Case 2 or 3 is not final (that is, not 'stopped', 'deleting', or 'deleted'), retry. Retries occur every 9 minutes for 24 hours." width="465" />](media/stay-stopped-aws-rds-aurora-flow-simple.png "Simplified flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Aurora or Relational Database Service database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. If the database status from Case 2 or 3 is not final (that is, not 'stopped', 'deleting', or 'deleted'), retry. Retries occur every 9 minutes for 24 hours." width="465" />](media/stay-stopped-aws-rds-aurora-flow-simple.png "Simplified flowchart for Stay Stopped, RDS and Aurora!")
 
 The design is simple but robust:
 
@@ -111,7 +109,7 @@ The design is simple but robust:
       request is made, the state machine sees it through until the database's
       status changes from `stopping` to `stopped`.
 
-      ![retrieveRdsInstanceState, isInstanceAvailable, and waitFiveMinutes are joined in a loop. The only exit paths are from isInstanceAvailable to stopRdsInstance if rdsInstanceState is "available"; and from retrieveRdsInstanceState and stopRdsInstance to fallback, if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png "Annotated state machine from the AWS Architecture Blog solution")
+      ![Retrieve Relational Database Service Instance State, is Instance Available?, and wait Five Minutes are joined in a loop. The only exit paths are from is Instance Available? to stop RDS Instance, if RDS Instance State is 'available'; and from retrieve RDS Instance State and stop RDS Instance to fall-back, if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png "Annotated state machine from the AWS Architecture Blog solution")
 
   These examples demonstrate that a distributed computing problem like
   stopping a cloud database is not simple. Moreover, each professional who
@@ -137,15 +135,15 @@ The design is simple but robust:
   [cost anomaly detection](https://docs.aws.amazon.com/cost-management/latest/userguide/manage-ad.html)
   are still essential.
 
-- It's still important to start a database before its maintenance window and
-  leave it running, once in a while.
+- Once in a while it's still important to start a database before its
+  maintenance window and leave it running until the window closes.
 
 ### Detailed Diagram
 
 <details>
-  <summary>View the full architecture diagram/flowchart...</summary>
+  <summary>Architecture diagram and flowchart...</summary>
 
-[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow.png" alt="EventBridge events 0153 and 0154 (database started after exceeding 7-day maximum stop time) go to main SQS queue. AWS Lambda function stops the Aurora cluster or RDS instance. If database status is invalid, message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' stops retries, as does a serious error. After 160 tries (24 hours), message goes to error (dead letter) queue." width="550" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow.png" alt="Relational Database Service Event Bridge events '0153' and '0154' (database started after exceeding 7-day maximum stop time) go to the main Simple Queue Service queue. The Amazon Web Services Lambda function stops the Aurora cluster or RDS instance. If the database's status is invalid, the queue message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' stops retries, as does a serious error. After 160 tries (24 hours), the message goes to the error (dead letter) SQS queue." width="550" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
 
 </details>
 
@@ -293,11 +291,10 @@ Check the:
     `InvalidDBInstanceState` or `InvalidDBClusterStateFault` :
 
     - One time:
-      A database could not be stopped because it was in a highly irregular
-      state.
+      A database could not be stopped because it was in an unexpected state.
     - Multiple times for the same database:
-      The database was in an irregular but potentially recoverable state. Stay
-      Stopped retries every 9 minutes, until 24 hours have passed.
+      The database was in an unexpected but potentially recoverable state.
+      Stay Stopped retries every 9 minutes, until 24 hours have passed.
 
   - Log entries are JSON objects.
     - Stay Stopped includes `"level"` , `"type"` and `"value"` keys.
@@ -305,12 +302,18 @@ Check the:
   - For more data, change the `LogLevel` in CloudFormation.
 - `ErrorQueue` (dead letter)
   [SQS queue](https://console.aws.amazon.com/sqs/v3/home#/queues)
-  - A message in this queue indicates that Stay Stopped could not stop a
-    database after trying for 24 hours.
-  - Queue messages are EventBridge events for RDS or Aurora forced database
-    start.
+  - The presence of a message in this queue means that Stay Stopped did not
+    stop a database, usually after trying for 24 hours.
+  - The message will usually be the original EventBridge event from when AWS
+    started the database after it had been stopped for 7 days.
+  - Different message types are possible in rare cases, such as if cricial
+    Stay Stopped components have been modified or deleted, or the local
+    security configuration denies EventBridge permission to send an event
+    message to the main SQS queue or denies SQS permission to invoke the AWS
+    Lambda function.
 - [CloudTrail Event history](https://console.aws.amazon.com/cloudtrailv2/home?ReadOnly=false/events?ReadOnly=false)
-  - CloudTrail events with an "Error code" may indicate permissions problems.
+  - CloudTrail events with an "Error code" may indicate permissions problems,
+    typically due to the local security configuration.
   - To see more events, change "Read-only" from `false` to `true` .
 
 ## Testing
