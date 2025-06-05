@@ -8,7 +8,7 @@ You can keep an EC2 compute instance stopped as long as you want, but it's not
 possible to stop an RDS or Aurora database longer than 7 days. After AWS
 starts your database on the 7th day, this tool automatically stops it again.
 
-Stay Stopped is for databases you use sporadically, perhaps for development
+Stay-Stopped is for databases you use sporadically, perhaps for development
 and testing. If it would cost too much to keep a database running but take too
 long to re-create it, this tool might save you money, time, or both.
 
@@ -45,7 +45,7 @@ The design is simple but robust:
   [RDS-EVENT-0153](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0153)
   (Aurora database cluster).
   You do not need to set any opt-in or opt-out tags. As long as _you_, rather
-  than _AWS_, started your database this time, Stay Stopped won't stop it.
+  than _AWS_, started your database this time, Stay-Stopped won't stop it.
 
 - Stopping stuff is inherently idempotent: keep trying until it is stopped!
   This tool tries every 9 minutes until the database is stopped, an unexpected
@@ -115,7 +115,7 @@ The design is simple but robust:
   stopping a cloud database is not simple. Moreover, each professional who
   tackles a complex problem contributes a piece of the puzzle. By publishing
   our work on an open-source basis, we can learn from each other. Please get
-  in touch if you have ideas for improving Stay Stopped!
+  in touch if you have ideas for improving Stay-Stopped!
 
   For further reading:
 
@@ -174,7 +174,7 @@ The design is simple but robust:
 
 ## Multi-Account, Multi-Region
 
-For reliability, Stay Stopped works completely independently in each region, in
+For reliability, Stay-Stopped works completely independently in each region, in
 each AWS account. To deploy in multiple regions and/or AWS accounts,
 
  1. Delete any standalone `StayStoppedRdsAurora` CloudFormation _stacks_ in
@@ -194,7 +194,7 @@ each AWS account. To deploy in multiple regions and/or AWS accounts,
     - StackSet name: `StayStoppedRdsAurora`
 
  4. Two pages later, under "Deployment targets", select "Deploy to
-    Organizational Units". Enter your target `ou-` identifier. Stay Stopped
+    Organizational Units". Enter your target `ou-` identifier. Stay-Stopped
     will be deployed in all AWS accounts in your target OU. Toward the bottom
     of the page, specify your target region(s).
 
@@ -294,20 +294,20 @@ Check the:
       A database could not be stopped because it was in an unexpected state.
     - Multiple times for the same database:
       The database was in an unexpected but potentially recoverable state.
-      Stay Stopped retries every 9 minutes, until 24 hours have passed.
+      Stay-Stopped retries every 9 minutes, until 24 hours have passed.
 
   - Log entries are JSON objects.
-    - Stay Stopped includes `"level"` , `"type"` and `"value"` keys.
+    - Stay-Stopped includes `"level"` , `"type"` and `"value"` keys.
     - Other software components may use different keys.
   - For more data, change the `LogLevel` in CloudFormation.
 - `ErrorQueue` (dead letter)
   [SQS queue](https://console.aws.amazon.com/sqs/v3/home#/queues)
-  - The presence of a message in this queue means that Stay Stopped did not
+  - The presence of a message in this queue means that Stay-Stopped did not
     stop a database, usually after trying for 24 hours.
   - The message will usually be the original EventBridge event from when AWS
     started the database after it had been stopped for 7 days.
   - Different message types are possible in rare cases, such as if cricial
-    Stay Stopped components have been modified or deleted, or the local
+    Stay-Stopped components have been modified or deleted, or the local
     security configuration denies EventBridge permission to send an event
     message to the main SQS queue or denies SQS permission to invoke the AWS
     Lambda function.
@@ -348,17 +348,17 @@ be sufficient.
 
 ### Test by Manually Starting a Database
 
-In test mode, Stay Stopped responds to user-initiated, non-forced database
+In test mode, Stay-Stopped responds to user-initiated, non-forced database
 starts, too:
 [RDS-EVENT-0088 (RDS database instance)](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0088)
 and
 [RDS-EVENT-0151](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
-(Aurora database cluster). Although Stay Stopped won't stop databases that
+(Aurora database cluster). Although Stay-Stopped won't stop databases that
 are already running and remain running, in test mode it **will stop any
 database that you create or start** &#9888;. To test, manually start a stopped
 [RDS or Aurora database](https://console.aws.amazon.com/rds/home#databases:).
 
-> In test mode, Stay Stopped also receives
+> In test mode, Stay-Stopped also receives
 [RDS-EVENT-0088 (Aurora database instance)](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0088).
 Internally, the code ignores it in favor of the cluster-level event.
 
