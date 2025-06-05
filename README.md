@@ -354,9 +354,10 @@ starts, too:
 [RDS-EVENT-0088 (RDS database instance)](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0088)
 and
 [RDS-EVENT-0151](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
-(Aurora database cluster). Although Stay-Stopped won't stop databases that
-are already running and remain running, while in test mode it **will stop any
-database that you create or start &#9888;**. To test, manually start a stopped
+(Aurora database cluster). Although it won't stop databases that are already
+running and remain running, **&#9888; while in test mode Stay-Stopped will
+stop any database that is newly created or newly started**. To test, manually
+start a stopped
 [RDS or Aurora database](https://console.aws.amazon.com/rds/home#databases:).
 
 > In test mode, Stay-Stopped also receives
