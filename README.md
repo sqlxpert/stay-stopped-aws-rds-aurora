@@ -75,7 +75,7 @@ The design is simple but robust:
       What if the database takes a long time to start? Startup "can take
       minutes to hours", according to the
       [RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StartInstance.html).
-      What if the database goes from `available` to `maintenance`, or another
+      What if the database goes from `available` to `maintenance` or another
       similar status, _before_ the next status check?
       [Lambda has a 15-minute maximum timeout](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html).
 
@@ -238,8 +238,9 @@ entirely at your own risk. Paul encourages you to review the source code._
 - No data storage other than in the queues and the log, both of which have
   configurable retention periods.
 
-- A retry mechanism (every 9 minutes) and a time limit (24 hours), to increase
-  the likelihood that a database will be stopped as intended.
+- A retry mechanism (every 9 minutes) and limit (160 total times, which is 24
+  hours), to increase the likelihood that a database will be stopped as
+  intended but prevent endless retries.
 
 - A concurrency limit, to prevent exhaustion of available Lambda resources.
 
