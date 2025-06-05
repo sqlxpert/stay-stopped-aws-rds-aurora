@@ -79,11 +79,12 @@ The design is simple but robust:
       [RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StartInstance.html).
       What if the database goes from `available` to `maintenance`, or another
       similar status, _before_ the next status check?
-      [Lambda has a 15-minute maximum](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html).
+      [Lambda has a 15-minute maximum timeout](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html).
 
       Waiting _within_ the Lambda function might seem wasteful, but the cost
       is less than 2¢ &mdash; negligible for a function triggered once per
-      database per week. I appreciate the author's minimalist instinct.
+      database per week. AWS Lambda's maximum timeout notwithstanding, I
+      appreciate the author's minimalist instinct.
   
    2. [Stopping an Automatically Started Database Instance](https://aws.amazon.com/jp/blogs/architecture/field-notes-stopping-an-automatically-started-database-instance-with-amazon-rds/)
       \[[code](https://github.com/aws-samples/amazon-rds-auto-restart-protection/tree/cfdd3a1)\]
@@ -106,9 +107,9 @@ The design is simple but robust:
       won't recur until AWS starts the database again in 7 days or, worse yet,
       someone starts the database manually _with the intention of using it_.
 
-      What I appreciate about this solution is that once the stop request is
-      made, the state machine sees it through until the database's status
-      changes from `stopping` to `stopped`.
+      What I appreciate about this author's solution is that once the stop
+      request is made, the state machine sees it through until the database's
+      status changes from `stopping` to `stopped`.
 
       ![retrieveRdsInstanceState, isInstanceAvailable, and waitFiveMinutes are joined in a loop. The only exit paths are from isInstanceAvailable to stopRdsInstance if rdsInstanceState is "available"; and from retrieveRdsInstanceState and stopRdsInstance to fallback, if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png "Annotated state machine from the AWS Architecture Blog solution")
 
