@@ -339,9 +339,9 @@ these parameters in CloudFormation:
 |`Test`|`false`|`true`|
 |`LogLevel`|`ERROR`|`INFO`|
 |`QueueVisibilityTimeoutSecs`|`540`|`60`|
-|_Equivalent in minutes_|_9 minutes_|_1 minute_|
+|&rarr; _Equivalent in minutes_|_9 minutes_|_1 minute_|
 |`QueueMaxReceiveCount`|`160`|`30`|
-|_Equivalent time_|_24 hours_|_30 minutes_|
+|&rarr; _Equivalent time_|_24 hours_|_30 minutes_|
 
 Given the operational and security risks explained below, **&#9888; exit test
 mode as quickly as possible**. If your test database is ready, several minutes
