@@ -47,8 +47,8 @@ The design is simple but robust:
   You do not need to set any opt-in or opt-out tags. As long as _you_, rather
   than _AWS_, started your database this time, Stay-Stopped won't stop it.
 
-- Stopping stuff is inherently idempotent: keep trying until it is stopped!
-  This tool tries every 9 minutes until the database is stopped, an unexpected
+- Stopping stuff is inherently idempotent: keep trying until it stops! This
+  tool tries every 9 minutes until the database is stopped, an unexpected
   error occurs, or 24 hours pass.
 
   > Some alternatives introduce a latent bug (a
