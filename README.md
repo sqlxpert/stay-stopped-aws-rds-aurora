@@ -214,9 +214,9 @@ and/or AWS accounts. See
 
 ## Security
 
-_In accordance with the software license, nothing in this section establishes
+> In accordance with the software license, nothing in this section establishes
 indemnification, a warranty, assumption of liability, etc. Use this software
-entirely at your own risk. Paul encourages you to review the source code._
+entirely at your own risk. Paul encourages you to review the source code.
 
 <details>
   <summary>Security details...</summary>
