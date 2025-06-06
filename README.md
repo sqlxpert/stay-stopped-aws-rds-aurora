@@ -29,7 +29,7 @@ Jump to:
 
 ## Design
 
-[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Aurora or Relational Database Service database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. If the database status from Case 2 or 3 is not final (that is, not 'stopped', 'deleting', or 'deleted'), retry. Retries occur every 9 minutes for 24 hours." width="372" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Aurora or Relational Database Service database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. If the database status from Case 2 or 3 is not final (that is, not 'stopped', 'deleting', or 'deleted'), retry. Retries occur every 9 minutes for 24 hours." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for Stay Stopped, RDS and Aurora!")
 
 The design is simple but robust:
 
@@ -58,9 +58,9 @@ The design is simple but robust:
   long enough.
 
   <details>
-    <summary>Why should you care? More about idempotence and latent bugs...</summary>
+    <summary>Why should you care?</summary>
 
-  Here are two interesting alternative solutions, described as of May, 2025:
+  Consider two alternative solutions, described as of May, 2025:
 
    1. [Stop Amazon RDS/Aurora Whenever They Start](https://aws.plainenglish.io/stop-amazon-rds-aurora-whenever-they-start-with-lambda-and-eventbridge-c8c1a88f67d6)
       \[[code](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f)\]
@@ -111,11 +111,55 @@ The design is simple but robust:
 
       ![Retrieve Relational Database Service Instance State, is Instance Available?, and wait Five Minutes are joined in a loop. The only exit paths are from is Instance Available? to stop RDS Instance, if RDS Instance State is 'available'; and from retrieve RDS Instance State and stop RDS Instance to fall-back, if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png?raw=true "Annotated state machine from the AWS Architecture Blog solution")
 
-  These examples demonstrate that a distributed computing problem like
-  stopping a cloud database is not simple. Moreover, each professional who
-  tackles a complex problem contributes a piece of the puzzle. By publishing
-  our work on an open-source basis, we can learn from each other. Please get
-  in touch if you have ideas for improving Stay-Stopped!
+  Stay-Stopped requires only one Lambda function, but inserts an SQS queue
+  between EventBridge and Lambda. The
+  [message [in]visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html)
+  makes it possible to retry the Lambda function every so often, with the
+  original EventBridge event message, until the return value is success or
+  [maxReceiveCount](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html#policies-for-dead-letter-queues)
+  is reached, after which the event message goes to a dead letter queue.
+
+  Given that the Lambda function receives the original event mesasage over and
+  over, how is the state of the database tracked? It isn't. The countdown to
+  the next [in]visibility timeout, and the receive count, are the only details
+  to track. SQS maintains all the state information that's needed. The sole
+  Lambda function does the same thing each time, until the database is
+  stopped. This design avoids the need for differentiated Lambda functions,
+  organized in a Step Function state machine.
+
+  Each time the Lambda function is invoked, it tries to stop the database.
+  Unlike a request to stop an EC2 compute instance, which succeeds even if the
+  EC2 instance is stopping or already stopped, a request to stop a database
+  fails if the database is stopping or already stopped. Aurora mentions the
+  offending database status in the error message:
+
+  > An error occurred (InvalidDBClusterStateFault) when calling the
+  StopDBCluster operation: DbCluster NAME_OF_YOUR_AURORA_DATABASE_CLUSTER **is
+  in stopped state** but expected it to be one of available.
+
+  There is no point in checking the status of an Aurora database, separately
+  and non-atomically, when the goal is to stop it. Keep trying to stop it, and
+  the error message tells when it is finally stopped!
+
+  RDS omits the offending database status:
+
+  > An error occurred (InvalidDBInstanceState) when calling the StopDBInstance
+  operation: Instance NAME_OF_YOUR_RDS_DATABASE_INSTANCE **is not in**
+  available state**.
+
+  After receiving this error, the Lambda function calls
+  `describe_db_instances` to find out what is going on with an RDS database.
+  Does the fact that a stop request and a status request are always separate,
+  non-atomic operations (and that there is no provision for locking in
+  between) make a race condition inevitable with RDS? No, as long as we stop
+  first and ask questions later! Always doing the two operations in that
+  order, and repeating _both_ until the database is finally stopped, covers
+  all the possibilities.
+
+  > Stopping a cloud database is not so simple; it's a distributed computing
+  problem. Each professional who tackles a complex problem contributes a piece
+  of the puzzle. By publishing our work on an open-source basis, we can learn
+  from each other. Please get in touch with ideas for improving Stay-Stopped!
 
   For further reading:
 
@@ -124,6 +168,10 @@ The design is simple but robust:
 
   - [Idempotence: Doing It More than Once](https://sqlxpert.github.io/2025/05/17/idempotence-doing-it-more-than-once.html),
     by yours truly.
+
+  - "Constant work and self-healing" in
+    [Reliability, constant work, and a good cup of coffee](https://aws.amazon.com/builders-library/reliability-and-constant-work#Constant_work_and_self-healing)
+    by Colm MacC&aacute;rthaigh (another _Builder's Library_ article).
 
   </details>
 
@@ -142,7 +190,7 @@ The design is simple but robust:
 
 Click to view the architecture diagram and flowchart:
 
-[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow-thumb.png" alt="Relational Database Service Event Bridge events '0153' and '0154' (database started after exceeding 7-day maximum stop time) go to the main Simple Queue Service queue. The Amazon Web Services Lambda function stops the Aurora cluster or RDS instance. If the database's status is invalid, the queue message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' stops retries, as does a serious error. After 160 tries (24 hours), the message goes to the error (dead letter) SQS queue." width="144" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png?raw=true "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow-thumb.png" alt="Relational Database Service Event Bridge events '0153' and '0154' (database started after exceeding 7-day maximum stop time) go to the main Simple Queue Service queue. The Amazon Web Services Lambda function stops the Aurora cluster or RDS instance. If the database's status is invalid, the queue message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' stops retries, as does a serious error. After 160 tries (24 hours), the message goes to the error (dead letter) SQS queue." height="144" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png?raw=true "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
 
 ## Get Started
 
@@ -393,7 +441,7 @@ Edit the database names in these test messages:
 ```json
 {
   "detail": {
-    "SourceIdentifier": "NAME_OF_YOUR_AURORA_DATABASE_INSTANCE",
+    "SourceIdentifier": "NAME_OF_YOUR_AURORA_DATABASE_CLUSTER",
     "SourceType": "CLUSTER",
     "EventID": "RDS-EVENT-0153"
   },
@@ -418,7 +466,7 @@ manually. Edit the database names in this Lambda test event:
       "messageId": "test-message-1-rds"
     },
     {
-      "body": "{ \"detail\": { \"SourceIdentifier\": \"NAME_OF_YOUR_AURORA_DATABASE_INSTANCE\", \"SourceType\": \"CLUSTER\", \"EventID\": \"RDS-EVENT-0153\" }, \"detail-type\": \"RDS DB Cluster Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
+      "body": "{ \"detail\": { \"SourceIdentifier\": \"NAME_OF_YOUR_AURORA_DATABASE_CLUSTER\", \"SourceType\": \"CLUSTER\", \"EventID\": \"RDS-EVENT-0153\" }, \"detail-type\": \"RDS DB Cluster Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
       "messageId": "test-message-2-aurora"
     }
   ]

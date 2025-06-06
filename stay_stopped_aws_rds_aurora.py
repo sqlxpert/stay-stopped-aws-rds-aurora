@@ -170,7 +170,7 @@ def assess_db_status(db_status):
         | "storage-full"
       ):
         pass
-        # Status won't change; wanted to list known no-retry ERROR conditions
+        # Status won't change; listing recognized no-retry ERROR conditions
 
   return (log_level, retry)
 
