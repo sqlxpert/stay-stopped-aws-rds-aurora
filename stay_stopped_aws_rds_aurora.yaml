@@ -578,15 +578,20 @@ Resources:
               days,
               to ${MainQueue.QueueName}
       EventPattern:
-        # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster
-        # "DB cluster is being started due to it exceeding the maximum allowed
-        # time being stopped."
         source: [ aws.rds ]
         detail-type: [ RDS DB Cluster Event ]
         detail:
           EventID:
+
             - RDS-EVENT-0153
+            # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0153
+            # "DB cluster is being started due to it exceeding the maximum
+            # allowed time being stopped."
+
             - !If [ TestTrue, RDS-EVENT-0151, !Ref AWS::NoValue ]
+            # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0151
+            # "DB cluster started."
+
           SourceType: [ CLUSTER ]
           SourceIdentifier:
             - anything-but:
@@ -618,18 +623,26 @@ Resources:
               RDS-EVENT-0154 forced RDS database instance start after 7 days,
               to ${MainQueue.QueueName}
       EventPattern:
-        # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
-        # "DB instance is being started due to it exceeding the maximum
-        # allowed time being stopped."
-        #
-        # Warning: RDS-EVENT-0088 overlaps with Aurora
-        # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
         source: [ aws.rds ]
         detail-type: [ RDS DB Instance Event ]
         detail:
           EventID:
+
             - RDS-EVENT-0154
+            # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0154
+            # "DB instance is being started due to it exceeding the maximum
+            # allowed time being stopped."
+
             - !If [ TestTrue, RDS-EVENT-0088, !Ref AWS::NoValue ]
+            # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0088
+            # "DB instance started."
+            #
+            # Warning: Aurora database instances have an event that is
+            # indistinguishable at this level. The Lambda function ignores it,
+            # in assess_db_invalid_parameter .
+            # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0088
+            # "DB instance started."
+
           SourceType: [ DB_INSTANCE ]
           SourceIdentifier:
             - anything-but:
@@ -933,10 +946,20 @@ Resources:
               and ("not eligible for stopping" in error_message)
             ):
               log_level = INFO
-              # Quietly ignore database instance-level event for Aurora,
-              # because there will be a corresponding database cluster-level event.
-              # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
+              # Quietly ignore database instance start events for Aurora,
+              # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0088
+              #
+              # ...because there will be a corresponding database cluster event,
+              # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0151
+              #
+              # ...and Aurora database instances cannot be stopped independently of
+              # their Aurora cluster, per:
               # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-cluster-stop-start.html#aurora-cluster-start-stop-overview
+              #
+              # This case occurs only in test mode. At the EventPattern level (see
+              # CloudFormation), the start event for Aurora database instances is
+              # indistinguishable from the start event for RDS database instances,
+              # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0088
 
             return (log_level, retry)
 
