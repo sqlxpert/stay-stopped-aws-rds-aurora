@@ -496,15 +496,14 @@ A success response from `stop_db_cluster` or `stop_db_instance` is _not_
 success for the Lambda function. Unless the database is in a final status such
 as `stopped`, the Lambda function
 [returns a batch item failure](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-errorhandling.html#services-sqs-batchfailurereporting),
-allowing retries (up to `maxReceiveCount`).
+provoking retries (up to `maxReceiveCount`).
 
 The function supports batches of event messages, each representing a different
 database to stop. It's improbable that two stop stopped databases would be
 started within a short window of time. Instead, partial batch responses
-provide a way to request retries, short of
-[raising an exception](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html#runtimes-lifecycle-invoke-with-errors)
-or calling `sys.exit` with a non-zero status, either of which would provoke
-the needless shutdown and re-initialization of the Lambda runtime environment.
+provide a way to provoke retries, short of raising an exception or calling
+`sys.exit(1)`, either of which would also provoke the needless
+[shutdown and re-initialization of the Lambda runtime environment](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html#runtimes-lifecycle-invoke-with-errors).
 
 ### Further Reading
 
