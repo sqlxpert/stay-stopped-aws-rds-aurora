@@ -436,7 +436,7 @@ from `stopping` to `stopped`.
 
 ![Retrieve Relational Database Service Instance State, is Instance Available?, and wait Five Minutes are joined in a loop. The only exit paths are from is Instance Available? to stop RDS Instance, if RDS Instance State is 'available'; and from retrieve RDS Instance State and stop RDS Instance to fall-back, if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png?raw=true "Annotated state machine from the AWS Architecture Blog solution")
 
-### Stay-Stopped: Queue Before Lambda Function
+### Stay-Stopped: Queue Before Lambda
 
 Stay-Stopped requires only one Lambda function, but inserts an SQS queue
 between EventBridge and Lambda. The
@@ -447,10 +447,9 @@ event message, until the return value indicates success or
 is reached, after which the event message goes to the dead letter queue. SQS
 maintains all the state that's needed.
 
-If the Lambda function receives the original event mesasage over and over, how
-is the state of the database tracked? It isn't. One Lambda function does the
-same thing each time, until the database is stopped. This avoids a Step
-Function state machine.
+If the Lambda function receives the original event mesasage again and again,
+how is the state of the database tracked? It isn't. One Lambda function does
+the same thing each time, avoiding the need for a Step Function state machine.
 
 Each time the Lambda function is invoked, it tries to stop the database.
 Unlike a request to stop an EC2 compute instance, which succeeds even if the
@@ -466,7 +465,7 @@ There is no point in checking the status of an Aurora database, separately and
 non-atomically, when the goal is to stop it. Keep trying to stop it, and the
 error message will reveal when it is finally stopped!
 
-RDS omits the offending database status:
+But RDS omits the offending database status:
 
 > An error occurred (InvalidDBInstanceState) when calling the StopDBInstance
 operation: Instance NAME_OF_YOUR_RDS_DATABASE_INSTANCE **is not in
@@ -480,11 +479,6 @@ condition inevitable with RDS? No, as long as we stop first and ask questions
 later! Repeat both operations in that order until the database is finally
 stopped.
 
-> Stopping a cloud database is not so simple; it's a distributed computing
-problem. Each professional who tackles a complex problem contributes a piece
-of the puzzle. By publishing our work on an open-source basis, we can learn
-from each other. Please get in touch with ideas for improving Stay-Stopped!
-
 ### Further Reading
 
 - [Making retries safe with idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
@@ -497,7 +491,14 @@ from each other. Please get in touch with ideas for improving Stay-Stopped!
   [Reliability, constant work, and a good cup of coffee](https://aws.amazon.com/builders-library/reliability-and-constant-work#Constant_work_and_self-healing)
   by Colm MacC&aacute;rthaigh (another _Builder's Library_ article)
 
-[Return to the Design section](#design-idempotence-end)
+### Open-Source Advantage
+
+> Stopping a cloud database is not so simple; it's a distributed computing
+problem. Each professional who tackles a complex problem contributes a piece
+of the puzzle. By publishing our work on an open-source basis, we can learn
+from each other. Please get in touch with ideas for improving Stay-Stopped!
+
+[Return to sthe Design section](#design-idempotence-end)
 
 </details>
 
