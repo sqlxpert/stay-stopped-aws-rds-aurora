@@ -216,36 +216,39 @@ entirely at your own risk. You are encouraged to review the source code.
 
 Check the:
 
-- [StayStoppedRdsAurora-LambdaFn CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-LambdaFn)
-  - Scrutinize log entries at the `ERROR` level:
+ 1. [StayStoppedRdsAurora-LambdaFn CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-LambdaFn)
+    - Scrutinize log entries at the `ERROR` level:
 
-    `InvalidDBInstanceState` or `InvalidDBClusterStateFault` :
+      `InvalidDBInstanceState` or `InvalidDBClusterStateFault` :
 
-    - One time:
-      A database could not be stopped because it was in an unexpected state.
-    - Multiple times for the same database:
-      The database was in an unexpected but potentially recoverable state.
-      Stay-Stopped retries every 9 minutes, until 24 hours have passed.
+      - One time:
+        A database could not be stopped because it was in an unexpected state.
+      - Multiple times for the same database:
+        The database was in an unexpected but potentially recoverable state.
+        Stay-Stopped retries every 9 minutes, until 24 hours have passed.
 
-  - Log entries are JSON objects.
-    - Stay-Stopped includes `"level"` , `"type"` and `"value"` keys.
-    - Other software components may use different keys.
-  - For more data, change the `LogLevel` in CloudFormation.
-- `StayStoppedRdsAurora-ErrorQueue` (dead letter)
-  [SQS queue](https://console.aws.amazon.com/sqs/v3/home#/queues)
-  - The presence of a message in this queue means that Stay-Stopped did not
-    stop a database, usually after trying for 24 hours.
-  - The message will usually be the original EventBridge event from when AWS
-    started the database after it had been stopped for 7 days.
-  - Different message types are possible in rare cases, such as if cricial
-    Stay-Stopped components have been modified or deleted, or the local
-    security configuration denies EventBridge permission to send an event
-    message to the main SQS queue or denies SQS permission to invoke the AWS
-    Lambda function.
-- [CloudTrail Event history](https://console.aws.amazon.com/cloudtrailv2/home?ReadOnly=false/events?ReadOnly=false)
-  - CloudTrail events with an "Error code" may indicate permissions problems,
-    typically due to the local security configuration.
-  - To see more events, change "Read-only" from `false` to `true` .
+    - Log entries are JSON objects.
+      - Stay-Stopped includes `"level"` , `"type"` and `"value"` keys.
+      - Other software components may use different keys.
+    - For more data, change the `LogLevel` in CloudFormation.
+
+ 2. `StayStoppedRdsAurora-ErrorQueue` (dead letter)
+    [SQS queue](https://console.aws.amazon.com/sqs/v3/home#/queues)
+    - The presence of a message in this queue means that Stay-Stopped did not
+      stop a database, usually after trying for 24 hours.
+    - The message will usually be the original EventBridge event from when AWS
+      started the database after it had been stopped for 7 days.
+    - Different message types are possible in rare cases, such as if cricial
+      Stay-Stopped components have been modified or deleted, or the local
+      security configuration denies EventBridge permission to send an event
+      message to the main SQS queue or denies SQS permission to invoke the AWS
+      Lambda function.
+
+ 3. [CloudTrail Event history](https://console.aws.amazon.com/cloudtrailv2/home?ReadOnly=false/events?ReadOnly=false)
+    - CloudTrail events with an "Error code" may indicate permissions
+      problems,
+      typically due to the local security configuration.
+    - To see more events, change "Read-only" from `false` to `true` .
 
 ## Testing
 
