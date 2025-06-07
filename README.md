@@ -29,7 +29,7 @@ Jump to:
 
 ## Design
 
-[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Aurora or Relational Database Service database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. If the database status from Case 2 or 3 is not final (that is, not 'stopped', 'deleting', or 'deleted'), retry. Retries occur every 9 minutes for 24 hours." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Relational Database Service or Aurora database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. Retry every 9 minutes for 24 hours, until the database status from Case 2 or 3 is 'stopped' or another final status." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for Stay Stopped, RDS and Aurora!")
 
 The design is simple but robust:
 
@@ -51,13 +51,14 @@ The design is simple but robust:
   tool tries every 9 minutes until the database is stopped, an unexpected
   error occurs, or 24 hours pass.
 
-  > Some alternative solutions introduce a latent bug (a
+  > Many alternative solutions introduce a latent bug (a
   [race condition](https://en.wikipedia.org/wiki/Race_condition))
   by checking whether a database is ready _before_ trying to stop it,
   insisting on catching the database while it's `available`, or not waiting
   long enough. To understand why this matters and what can go wrong, see the
   [Perspective](#perspective)
   section, below.
+  <a name="design-idempotence-end"></a>
 
 - It's not enough to call `stop_db_instance` or `stop_db_cluster` and hope for
   the best. This tool handles error cases. Look for a queue message or a log
@@ -74,7 +75,7 @@ The design is simple but robust:
 
 Click to view the architecture diagram and flowchart:
 
-[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow-thumb.png" alt="Relational Database Service Event Bridge events '0153' and '0154' (database started after exceeding 7-day maximum stop time) go to the main Simple Queue Service queue. The Amazon Web Services Lambda function stops the Aurora cluster or RDS instance. If the database's status is invalid, the queue message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' stops retries, as does a serious error. After 160 tries (24 hours), the message goes to the error (dead letter) SQS queue." height="144" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png?raw=true "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow-thumb.png" alt="Relational Database Service Event Bridge events '0153' and '0154' (database started after exceeding 7-day maximum stop time) go to the main Simple Queue Service queue. The Amazon Web Services Lambda function stops RDS instance or the Aurora cluster. If the database's status is invalid, the queue message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' stops retries, as does an error status. After 160 tries (24 hours), the message goes to the error (dead letter) SQS queue." height="144" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png?raw=true "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
 
 ## Get Started
 
@@ -372,18 +373,18 @@ hidden controls such as Service and Resource control policies (SCPs and RCPs)
 
 As noted in the
 [Design](#design)
-section, above, some alternative solutions introduce a latent bug (a
+section, above, many alternative solutions introduce a latent bug (a
 [race condition](https://en.wikipedia.org/wiki/Race_condition))
 by checking whether a database is ready _before_ trying to stop it,
 insisting on catching the database while it's `available`, or not waiting
 long enough.
 
 <details>
-  <summary>More about idempotence, race conditions, and latent bugs</summary>
+  <summary>More about idempotence, race conditions, latent bugs...</summary>
 
 Consider two alternative solutions, described as of May, 2025:
 
-### A Pure Lambda Function Alternative
+### Only an AWS Lambda Function
 
 [Stop Amazon RDS/Aurora Whenever They Start](https://aws.plainenglish.io/stop-amazon-rds-aurora-whenever-they-start-with-lambda-and-eventbridge-c8c1a88f67d6)
 \[[code](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f)\]
@@ -407,7 +408,7 @@ than 2¢ &mdash; negligible for a function triggered once per database per week.
 AWS Lambda's maximum timeout notwithstanding, I appreciate the author's
 minimalist instinct.
 
-### A Step Function Alternative
+### An AWS Step Function
 
 [Stopping an Automatically Started Database Instance](https://aws.amazon.com/jp/blogs/architecture/field-notes-stopping-an-automatically-started-database-instance-with-amazon-rds/)
 \[[code](https://github.com/aws-samples/amazon-rds-auto-restart-protection/tree/cfdd3a1)\]
@@ -435,7 +436,7 @@ from `stopping` to `stopped`.
 
 ![Retrieve Relational Database Service Instance State, is Instance Available?, and wait Five Minutes are joined in a loop. The only exit paths are from is Instance Available? to stop RDS Instance, if RDS Instance State is 'available'; and from retrieve RDS Instance State and stop RDS Instance to fall-back, if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png?raw=true "Annotated state machine from the AWS Architecture Blog solution")
 
-### The Stay-Stopped Solution
+### The Stay-Stopped Way
 
 Stay-Stopped requires only one Lambda function, but inserts an SQS queue
 between EventBridge and Lambda. The
@@ -443,15 +444,15 @@ between EventBridge and Lambda. The
 makes it possible to retry the Lambda function periodically, with the original
 EventBridge event message, until the return value is success or
 [maxReceiveCount](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html#policies-for-dead-letter-queues)
-is reached, after which the event message goes to the dead letter queue.
+is reached, after which the event message goes to the dead letter queue. SQS
+maintains all the state that's needed.
 
-Given that the Lambda function receives the original event mesasage over and
-over, how is the state of the database tracked? It isn't. The countdown to the
-next [in]visibility timeout, and the receive count, are the only details to
-track. SQS maintains all the state that's needed. One Lambda function does the
-same thing each time, until the database is stopped. This design avoids the
-need for differentiated Lambda functions, organized in a Step Function state
-machine.
+If the Lambda function receives the original event mesasage over and over, how
+is the state of the database tracked? It isn't. The countdown to the next
+[in]visibility timeout, and the receive count, are the only details to track.
+One Lambda function does the same thing each time, until the database is
+stopped. This design avoids the need for differentiated Lambda functions,
+organized in a Step Function state machine.
 
 Each time the Lambda function is invoked, it tries to stop the database.
 Unlike a request to stop an EC2 compute instance, which succeeds even if the
@@ -497,6 +498,8 @@ from each other. Please get in touch with ideas for improving Stay-Stopped!
 - "Constant work and self-healing" in
   [Reliability, constant work, and a good cup of coffee](https://aws.amazon.com/builders-library/reliability-and-constant-work#Constant_work_and_self-healing)
   by Colm MacC&aacute;rthaigh (another _Builder's Library_ article).
+
+[Resume reading the Design section](#design-idempotence-end)
 
 </details>
 
