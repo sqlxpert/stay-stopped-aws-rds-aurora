@@ -384,7 +384,7 @@ long enough.
 
 Consider two alternative solutions, described as of May, 2025:
 
-### Only an AWS Lambda Function
+### Pure Lambda Alternative
 
 [Stop Amazon RDS/Aurora Whenever They Start](https://aws.plainenglish.io/stop-amazon-rds-aurora-whenever-they-start-with-lambda-and-eventbridge-c8c1a88f67d6)
 \[[code](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f)\]
@@ -408,7 +408,7 @@ than 2¢ &mdash; negligible for a function triggered once per database per week.
 AWS Lambda's maximum timeout notwithstanding, I appreciate the author's
 minimalist instinct.
 
-### An AWS Step Function
+### Step Function Alternative
 
 [Stopping an Automatically Started Database Instance](https://aws.amazon.com/jp/blogs/architecture/field-notes-stopping-an-automatically-started-database-instance-with-amazon-rds/)
 \[[code](https://github.com/aws-samples/amazon-rds-auto-restart-protection/tree/cfdd3a1)\]
@@ -436,23 +436,21 @@ from `stopping` to `stopped`.
 
 ![Retrieve Relational Database Service Instance State, is Instance Available?, and wait Five Minutes are joined in a loop. The only exit paths are from is Instance Available? to stop RDS Instance, if RDS Instance State is 'available'; and from retrieve RDS Instance State and stop RDS Instance to fall-back, if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png?raw=true "Annotated state machine from the AWS Architecture Blog solution")
 
-### The Stay-Stopped Way
+### Stay-Stopped: Queue Before Lambda Function
 
 Stay-Stopped requires only one Lambda function, but inserts an SQS queue
 between EventBridge and Lambda. The
 [message [in]visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html)
-makes it possible to retry the Lambda function periodically, with the original
-EventBridge event message, until the return value is success or
+makes it possible to retry the Lambda function, with the original EventBridge
+event message, until the return value indicates success or
 [maxReceiveCount](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html#policies-for-dead-letter-queues)
 is reached, after which the event message goes to the dead letter queue. SQS
 maintains all the state that's needed.
 
 If the Lambda function receives the original event mesasage over and over, how
-is the state of the database tracked? It isn't. The countdown to the next
-[in]visibility timeout, and the receive count, are the only details to track.
-One Lambda function does the same thing each time, until the database is
-stopped. This design avoids the need for differentiated Lambda functions,
-organized in a Step Function state machine.
+is the state of the database tracked? It isn't. One Lambda function does the
+same thing each time, until the database is stopped. This avoids a Step
+Function state machine.
 
 Each time the Lambda function is invoked, it tries to stop the database.
 Unlike a request to stop an EC2 compute instance, which succeeds even if the
@@ -466,7 +464,7 @@ in stopped state** but expected it to be one of available.
 
 There is no point in checking the status of an Aurora database, separately and
 non-atomically, when the goal is to stop it. Keep trying to stop it, and the
-error message tells when it is finally stopped!
+error message will reveal when it is finally stopped!
 
 RDS omits the offending database status:
 
@@ -475,12 +473,12 @@ operation: Instance NAME_OF_YOUR_RDS_DATABASE_INSTANCE **is not in**
 available state.
 
 After receiving this error, the Lambda function calls `describe_db_instances`
-to find out what is going on with an RDS database. Does the fact that a stop
-request and a status request are always separate, non-atomic operations(with
-no provision for locking control of the database in between) make a race
+to find out the status of the RDS database. Does the fact that the stop
+request and the status request are always separate, non-atomic operations
+(with no provision for locking control of the database in between) make a race
 condition inevitable with RDS? No, as long as we stop first and ask questions
-later! Repeating both operations in that order until the database is finally
-stopped covers all the possibilities.
+later! Repeat both operations in that order until the database is finally
+stopped.
 
 > Stopping a cloud database is not so simple; it's a distributed computing
 problem. Each professional who tackles a complex problem contributes a piece
