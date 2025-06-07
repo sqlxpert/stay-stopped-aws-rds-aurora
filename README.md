@@ -469,8 +469,8 @@ error message will reveal when it is finally stopped!
 RDS omits the offending database status:
 
 > An error occurred (InvalidDBInstanceState) when calling the StopDBInstance
-operation: Instance NAME_OF_YOUR_RDS_DATABASE_INSTANCE **is not in**
-available state.
+operation: Instance NAME_OF_YOUR_RDS_DATABASE_INSTANCE **is not in
+available state**.
 
 After receiving this error, the Lambda function calls `describe_db_instances`
 to find out the status of the RDS database. Does the fact that the stop
@@ -488,16 +488,16 @@ from each other. Please get in touch with ideas for improving Stay-Stopped!
 ### Further Reading
 
 - [Making retries safe with idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
-  by Malcolm Featonby, in the _Amazon Builder's Library_.
+  by Malcolm Featonby, in the _Amazon Builder's Library_
 
 - [Idempotence: Doing It More than Once](https://sqlxpert.github.io/2025/05/17/idempotence-doing-it-more-than-once.html),
-  by yours truly.
+  by yours truly
 
 - "Constant work and self-healing" in
   [Reliability, constant work, and a good cup of coffee](https://aws.amazon.com/builders-library/reliability-and-constant-work#Constant_work_and_self-healing)
-  by Colm MacC&aacute;rthaigh (another _Builder's Library_ article).
+  by Colm MacC&aacute;rthaigh (another _Builder's Library_ article)
 
-[Resume reading the Design section](#design-idempotence-end)
+[Return to the Design section](#design-idempotence-end)
 
 </details>
 
