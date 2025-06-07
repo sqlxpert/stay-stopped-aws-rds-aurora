@@ -47,18 +47,17 @@ The design is simple but robust:
   You do not need to set any opt-in or opt-out tags. As long as _you_, rather
   than _AWS_, started your database this time, Stay-Stopped won't stop it.
 
-- Stopping stuff is inherently idempotent: keep trying until it stops! This
-  tool tries every 9 minutes until the database is stopped, an unexpected
-  error occurs, or 24 hours pass.
+- <a name="design-idempotence"></a>Stopping stuff is inherently
+  idempotent: keep trying until it stops! This tool tries every 9 minutes
+  until the database is stopped, an unexpected error occurs, or 24 hours pass.
 
   > Many alternative solutions introduce a latent bug (a
   [race condition](https://en.wikipedia.org/wiki/Race_condition))
   by checking whether a database is ready _before_ trying to stop it,
   insisting on catching the database while it's `available`, or not waiting
-  long enough. To understand why this matters and what can go wrong, see the
-  [Perspective](#perspective)
-  section, below.
-  <a name="design-idempotence-end"></a>
+  long enough. To understand why this matters and what can go wrong, see
+  [Perspective](#perspective),
+  below.
 
 - It's not enough to call `stop_db_instance` or `stop_db_cluster` and hope for
   the best. This tool handles error cases. Look for a queue message or a log
@@ -374,9 +373,8 @@ hidden controls such as Service and Resource control policies (SCPs and RCPs)
 
 ## Perspective
 
-As noted in the
-[Design](#design)
-section, above, many alternative solutions introduce a latent bug (a
+As noted in the Design section, many alternative solutions introduce a latent
+bug (a
 [race condition](https://en.wikipedia.org/wiki/Race_condition))
 by checking whether a database is ready _before_ trying to stop it,
 insisting on catching the database while it's `available`, or not waiting
@@ -405,11 +403,12 @@ hours", according to the
 What if the database goes from `available` to `maintenance` or another similar
 status, _before_ the next status check?
 [Lambda has a 15-minute maximum timeout](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html).
+The function might never get a chance to request that the database be stopped.
 
-Waiting _within_ the Lambda function might seem wasteful, but the cost is less
-than 2¢ &mdash; negligible for a function triggered once per database per
-week. Lambda's maximum timeout notwithstanding, I appreciate the author's
-instinct for minimal infrastructure.
+> Waiting _within_ the Lambda function might seem wasteful, but in this case,
+the cost is less than 2¢ &mdash; negligible for a function triggered once per
+database per week. Lambda's maximum timeout notwithstanding, I appreciate the
+author's instinct for minimal infrastructure.
 
 ### Step Function Alternative
 
@@ -422,9 +421,9 @@ would be accommodated. After the database finishes `starting` and becomes
 `available`, what if a person or system (perhaps an infrastructure-as-code
 system) happens to delete it before the next status check? That's unlikely,
 but what if someone notices that the database is now `available`, gets
-impatient, and stops it manually instead of waiting? Barring an error,
-`available` is the _only_ way out of the status-checking loop
-([stop-rds-instance-state-machine.json, L30-L40](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/cfdd3a1/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L30-L40)).
+impatient, and stops it manually? Barring an error, `available` is the _only_
+way out of the status-checking loop
+([stop-rds-instance-state-machine.json L30-L40](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/cfdd3a1/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L30-L40)).
 No
 [overall state machine timeout](https://docs.aws.amazon.com/step-functions/latest/dg/statemachine-structure.html#statemachinetimeoutseconds)
 is defined
@@ -433,7 +432,7 @@ The Step Function would keep checking every 5 minutes for a status that won't
 recur until AWS starts the database again in 7 days or, worse yet, someone
 starts the database manually _with the intention of using it_.
 
-What I appreciate about this author's solution is that once the stop request
+> What I appreciate about this author's solution is that once the stop request
 is made, the state machine sees it through until the database's status changes
 from `stopping` to `stopped`.
 
@@ -442,8 +441,8 @@ from `stopping` to `stopped`.
 ### Stay-Stopped: Queue Before Lambda
 
 Stay-Stopped requires only one Lambda function, but inserts an SQS queue
-between EventBridge and Lambda. No waiting takes place within the Lambda
-function. SQS counts up toward a
+between EventBridge and Lambda. The Lambda function does not wait on the
+database. SQS counts up toward a
 [message [in]visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html),
 making it possible to periodically retry the Lambda function, with the
 original EventBridge event message, until the return value indicates success.
@@ -453,17 +452,22 @@ is reached, SQS stops trying and moves the message to a dead letter queue.
 Between the [in]visibility timeout and the receive count, SQS maintains all
 the state that's needed.
 
-If the Lambda function receives the original event mesasage again and again,
-how is the changing status of the database tracked? It isn't. One Lambda
-function does the same thing each time, avoiding the need for a Step Function
-state machine.
+Given that the Lambda function receives the _original_ event mesasage again
+and again, how does Stay-Stopped track the database's progress from `starting`
+toward the status from which it can be stopped (`available`) and then toward a
+final status (usually `stopped`, but it could turn out to be `deleting`,
+`deleted`, or an unrecoverable status such as `failed`)? It doesn't. One
+Lambda function does the same thing each time it's invoked, avoiding the need
+for a Step Function state machine.
 
-Each time the Lambda function is invoked, it tries to stop the database.
-Unlike a request to stop an EC2 compute instance, which succeeds even if the
-EC2 instance is stopping or already stopped, a request to stop an RDS database
-instance or an Aurora database cluster fails if the database is stopping or
-already stopped. More importantly, it also fails if the database is in
-`maintenance` or another similar status, and not ready to be stopped.
+Each time the Lambda function is invoked, it tries to stop the database by
+calling `stop_db_cluster` (in response to an Aurora event) or
+`stop_db_instance` (RDS). Unlike a request to stop an EC2 compute instance,
+which succeeds even if the EC2 instance is stopping or already stopped, a
+request to stop an RDS database instance or an Aurora database cluster fails
+if the database is stopping or already stopped. More importantly, it also
+fails if the database is in `maintenance` or another similar status, and not
+ready to be stopped.
 
  1. Aurora mentions whatever offending database status in the error message:
 
@@ -488,6 +492,20 @@ already stopped. More importantly, it also fails if the database is in
     database in between) make a race condition inevitable with RDS? As long as
     we always stop first and ask questions later, we have done our best.
 
+A success response from `stop_db_cluster` or `stop_db_instance` is _not_
+success for the Lambda function. Unless the database is in a final status such
+as `stopped`, the Lambda function
+[returns a batch item failure](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-errorhandling.html#services-sqs-batchfailurereporting),
+allowing retries (up to `maxReceiveCount`).
+
+The function supports batches of event messages, each representing a different
+database to stop. It's improbable that two stop stopped databases would be
+started within a short window of time. Instead, partial batch responses
+provide a way to request retries, short of
+[raising an exception](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html#runtimes-lifecycle-invoke-with-errors)
+or calling `sys.exit` with a non-zero status, either of which would provoke
+the needless shutdown and re-initialization of the Lambda runtime environment.
+
 ### Further Reading
 
 - [Making retries safe with idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
@@ -507,7 +525,7 @@ problem. Each professional who tackles a complex problem contributes a piece
 of the puzzle. By publishing our work on an open-source basis, we can learn
 from each other. Please get in touch with ideas for improving Stay-Stopped!
 
-[Return to sthe Design section](#design-idempotence-end)
+[Return to the Design section](#design-idempotence)
 
 </details>
 
