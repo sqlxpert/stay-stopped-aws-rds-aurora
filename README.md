@@ -404,9 +404,9 @@ status, _before_ the next status check?
 [Lambda has a 15-minute maximum timeout](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html).
 
 Waiting _within_ the Lambda function might seem wasteful, but the cost is less
-than 2¢ &mdash; negligible for a function triggered once per database per week.
-AWS Lambda's maximum timeout notwithstanding, I appreciate the author's
-minimalist instinct.
+than 2¢ &mdash; negligible for a function triggered once per database per
+week. Lambda's maximum timeout notwithstanding, I appreciate the author's
+instinct for minimal infrastructure.
 
 ### Step Function Alternative
 
@@ -439,45 +439,51 @@ from `stopping` to `stopped`.
 ### Stay-Stopped: Queue Before Lambda
 
 Stay-Stopped requires only one Lambda function, but inserts an SQS queue
-between EventBridge and Lambda. The
-[message [in]visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html)
-makes it possible to retry the Lambda function, with the original EventBridge
-event message, until the return value indicates success or
+between EventBridge and Lambda. No waiting takes place within the Lambda
+function. SQS counts up toward a
+[message [in]visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html),
+making it possible to periodically retry the Lambda function, with the
+original EventBridge event message, until the return value indicates success.
+If
 [maxReceiveCount](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html#policies-for-dead-letter-queues)
-is reached, after which the event message goes to the dead letter queue. SQS
-maintains all the state that's needed.
+is reached, SQS stops trying and moves the message to a dead letter queue.
+Between the [in]visibility timeout and the receive count, SQS maintains all
+the state that's needed.
 
 If the Lambda function receives the original event mesasage again and again,
-how is the state of the database tracked? It isn't. One Lambda function does
-the same thing each time, avoiding the need for a Step Function state machine.
+how is the changing status of the database tracked? It isn't. One Lambda
+function does the same thing each time, avoiding the need for a Step Function
+state machine.
 
 Each time the Lambda function is invoked, it tries to stop the database.
 Unlike a request to stop an EC2 compute instance, which succeeds even if the
-EC2 instance is stopping or already stopped, a request to stop a database
-fails if the database is stopping or already stopped. Aurora mentions the
-offending database status in the error message:
+EC2 instance is stopping or already stopped, a request to stop an RDS database
+instance or an Aurora database cluster fails if the database is stopping or
+already stopped. More importantly, it also fails if the database is in
+`maintenance` or another similar status, and not ready to be stopped.
 
-> An error occurred (InvalidDBClusterStateFault) when calling the
-StopDBCluster operation: DbCluster NAME_OF_YOUR_AURORA_DATABASE_CLUSTER **is
-in stopped state** but expected it to be one of available.
+ 1. Aurora mentions whatever offending database status in the error message:
 
-There is no point in checking the status of an Aurora database, separately and
-non-atomically, when the goal is to stop it. Keep trying to stop it, and the
-error message will reveal when it is finally stopped!
+    > An error occurred (InvalidDBClusterStateFault) when calling the
+    StopDBCluster operation: DbCluster NAME_OF_YOUR_AURORA_DATABASE_CLUSTER
+    **is in stopping state** but expected it to be one of available.
 
-But RDS omits the offending database status:
+    There is no point in checking the status of an Aurora database, separately
+    and non-atomically, when the goal is to stop it. Keep trying to stop it,
+    and the error message will reveal when it is finally stopped.
 
-> An error occurred (InvalidDBInstanceState) when calling the StopDBInstance
-operation: Instance NAME_OF_YOUR_RDS_DATABASE_INSTANCE **is not in
-available state**.
+ 2. RDS, on the other hand, omits the offending database status:
 
-After receiving this error, the Lambda function calls `describe_db_instances`
-to find out the status of the RDS database. Does the fact that the stop
-request and the status request are always separate, non-atomic operations
-(with no provision for locking control of the database in between) make a race
-condition inevitable with RDS? No, as long as we stop first and ask questions
-later! Repeat both operations in that order until the database is finally
-stopped.
+    > An error occurred (InvalidDBInstanceState) when calling the
+    StopDBInstance operation: Instance NAME_OF_YOUR_RDS_DATABASE_INSTANCE
+    **is not in available state**.
+
+    After receiving this error, the Stay-Stopped Lambda function calls
+    `describe_db_instances` to find out the status of the RDS database. Does
+    the fact that the stop request and the status request are always separate,
+    non-atomic operations (with no provision for locking control of the
+    database in between) make a race condition inevitable with RDS? As long as
+    we always stop first and ask questions later, we have done our best.
 
 ### Further Reading
 
