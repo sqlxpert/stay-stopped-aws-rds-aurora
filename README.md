@@ -238,7 +238,7 @@ Check the:
       stop a database, usually after trying for 24 hours.
     - The message will usually be the original EventBridge event from when AWS
       started the database after it had been stopped for 7 days.
-    - Different message types are possible in rare cases, such as if cricial
+    - Different message types are possible in rare cases, such as if critical
       Stay-Stopped components have been modified or deleted, or the local
       security configuration denies EventBridge permission to send an event
       message to the main SQS queue or denies SQS permission to invoke the AWS
