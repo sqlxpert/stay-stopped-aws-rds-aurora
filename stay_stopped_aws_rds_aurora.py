@@ -116,7 +116,7 @@ def assess_db_status(db_status):
 
       case "stopped" | "deleting" | "deleted":
         log_level = INFO
-        # Terinal status, success!
+        # Terminal status, success!
 
       case (
           "starting"  # Stop not yet successfully requested
