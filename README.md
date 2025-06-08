@@ -331,7 +331,7 @@ Edit the database names in these test messages:
 ```json
 {
   "detail": {
-    "SourceIdentifier": "NAME_OF_YOUR_RDS_DATABASE_INSTANCE",
+    "SourceIdentifier": "Name-Of-Your-RDS-Database-Instance",
     "SourceType": "DB_INSTANCE",
     "EventID": "RDS-EVENT-0154"
   },
@@ -344,7 +344,7 @@ Edit the database names in these test messages:
 ```json
 {
   "detail": {
-    "SourceIdentifier": "NAME_OF_YOUR_AURORA_DATABASE_CLUSTER",
+    "SourceIdentifier": "Name-Of-Your-Aurora-Database-Cluster",
     "SourceType": "CLUSTER",
     "EventID": "RDS-EVENT-0153"
   },
@@ -365,11 +365,11 @@ manually. Edit the database names in this Lambda test event:
 {
   "Records": [
     {
-      "body": "{ \"detail\": { \"SourceIdentifier\": \"NAME_OF_YOUR_RDS_DATABASE_INSTANCE\", \"SourceType\": \"DB_INSTANCE\", \"EventID\": \"RDS-EVENT-0154\" }, \"detail-type\": \"RDS DB Instance Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
+      "body": "{ \"detail\": { \"SourceIdentifier\": \"Name-Of-Your-RDS-Database-Instance\", \"SourceType\": \"DB_INSTANCE\", \"EventID\": \"RDS-EVENT-0154\" }, \"detail-type\": \"RDS DB Instance Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
       "messageId": "test-message-1-rds"
     },
     {
-      "body": "{ \"detail\": { \"SourceIdentifier\": \"NAME_OF_YOUR_AURORA_DATABASE_CLUSTER\", \"SourceType\": \"CLUSTER\", \"EventID\": \"RDS-EVENT-0153\" }, \"detail-type\": \"RDS DB Cluster Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
+      "body": "{ \"detail\": { \"SourceIdentifier\": \"Name-Of-Your-Aurora-Database-Cluster\", \"SourceType\": \"CLUSTER\", \"EventID\": \"RDS-EVENT-0153\" }, \"detail-type\": \"RDS DB Cluster Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
       "messageId": "test-message-2-aurora"
     }
   ]
@@ -489,7 +489,7 @@ stopped.
  1. Aurora mentions whatever offending database status in the error message:
 
     > An error occurred (InvalidDBClusterStateFault) when calling the
-    StopDBCluster operation: DbCluster NAME_OF_YOUR_AURORA_DATABASE_CLUSTER
+    StopDBCluster operation: DbCluster Name-Of-Your-Aurora-Database-Cluster
     **is in stopping state** but expected it to be one of available.
 
     There is no point in checking the status of an Aurora database, separately
@@ -499,7 +499,7 @@ stopped.
  2. RDS, on the other hand, omits the offending database status:
 
     > An error occurred (InvalidDBInstanceState) when calling the
-    StopDBInstance operation: Instance NAME_OF_YOUR_RDS_DATABASE_INSTANCE
+    StopDBInstance operation: Instance Name-Of-Your-RDS-Database-Instance
     **is not in available state**.
 
     After receiving this error, the Stay-Stopped Lambda function calls
