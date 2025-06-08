@@ -473,9 +473,9 @@ the state that's needed.
 Given that the Lambda function receives the _original_ event message again
 and again, how does Stay-Stopped track the database's progress from `starting`
 to `available` (the only status from which it can be stopped) and then to
-`stopped` (or another final status)? It doesn't. One Lambda function does the
-same thing each time it's invoked, avoiding the need for a Step Function state
-machine.
+`stopped` (or another final status)? It doesn't. One idempotent Lambda
+function does the same thing each time it's invoked, avoiding the need for a
+Step Function state machine.
 
 Each time the Lambda function is invoked, it tries to stop the database by
 calling `stop_db_cluster` (for an Aurora event) or `stop_db_instance` (for
