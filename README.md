@@ -505,14 +505,13 @@ either of which would also provoke the needless
 
 > Retries continue until the database reaches a final status (usually
 `stopped`). If someone starts the database manually after it enters `stopped`
-status but before Stay-Stopped detects that status, Stay-Stopped will stop the
+status but before Stay-Stopped detects this, Stay-Stopped will stop the
 database a second time. A race condition, yes, but one that doesn't interfere
-with the main goal of stopping the database (the first time)! Wait until a
-database has been in `stopped` status for 9 minutes (the default
-[in]visibility timeout) before starting it. If this is onerous, change
-`FollowUntilStopped` to `false` in CloudFormation. Retries will stop after the
-successful call to `stop_db_cluster` or `stop_db_instance`, eliminating the
-race condition.
+with the main goal of _stopping_! Wait until a database has been in `stopped`
+status for 9 minutes (the default [in]visibility timeout) before starting it.
+If this is onerous, change `FollowUntilStopped` to `false` in CloudFormation.
+retries will stop after the successful call to `stop_db_cluster` or
+`stop_db_instance`, eliminating the race condition.
 
 ### Further Reading
 
