@@ -33,10 +33,6 @@ Jump to:
 
 The design is simple but robust:
 
-- You can start your database manually or on a schedule (check out
-  [github.com/sqlxpert/lights-off-aws](/../../../lights-off-aws#lights-off)&nbsp;!),
-  whenever you like.
-
 - This tool only stops databases that _AWS_ is starting after they've been
   stopped for 7 days:
   [RDS-EVENT-0154](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0154)
@@ -45,7 +41,7 @@ The design is simple but robust:
   [RDS-EVENT-0153](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0153)
   (Aurora database cluster).
   You do not need to set any opt-in or opt-out tags. As long as _you_, rather
-  than _AWS_, started your database this time, Stay-Stopped won't stop it.
+  than _AWS_, started your database this time, Stay-Stopped won't stop it.&sup1;
 
 - <a name="design-idempotence"></a>Stopping stuff is inherently
   idempotent: keep trying until it stops! This tool tries every 9 minutes
@@ -69,6 +65,9 @@ The design is simple but robust:
 
 - Once in a while it's still important to start a database before its
   maintenance window and leave it running until the window closes.
+
+&sup1; Wait until the database has been in `stopped` status for 9 minutes
+before you start it.
 
 ### Detailed Diagram
 
@@ -455,10 +454,9 @@ the state that's needed.
 Given that the Lambda function receives the _original_ event mesasage again
 and again, how does Stay-Stopped track the database's progress from `starting`
 toward the status from which it can be stopped (`available`) and then toward a
-final status (usually `stopped`, but it could turn out to be `deleting`,
-`deleted`, or an unrecoverable status such as `failed`)? It doesn't. One
-Lambda function does the same thing each time it's invoked, avoiding the need
-for a Step Function state machine.
+final status (usually `stopped`)? It doesn't. One Lambda function does the
+same thing each time it's invoked, avoiding the need for a Step Function state
+machine.
 
 Each time the Lambda function is invoked, it tries to stop the database by
 calling `stop_db_cluster` (in response to an Aurora event) or
@@ -499,11 +497,22 @@ as `stopped`, the Lambda function
 provoking retries (up to `maxReceiveCount`).
 
 The function supports batches of event messages, each representing a different
-database to stop. It's improbable that two stop stopped databases would be
-started within a short window of time. Instead, partial batch responses
-provide a way to provoke retries, short of raising an exception or calling
-`sys.exit(1)`, either of which would also provoke the needless
+database to stop. It's improbable that two stopped databases would be started
+within a short window of time. Instead, partial batch responses provide a way
+to provoke retries, short of raising an exception or calling `sys.exit(1)`,
+either of which would also provoke the needless
 [shutdown and re-initialization of the Lambda runtime environment](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html#runtimes-lifecycle-invoke-with-errors).
+
+> Retries continue until the database reaches a final status (usually
+`stopped`). If someone starts the database manually after it enters `stopped`
+status but before Stay-Stopped detects that status, Stay-Stopped will stop the
+database a second time. A race condition, yes, but one that doesn't interfere
+with the main goal of stopping the database (the first time)! Wait until a
+database has been in `stopped` status for 9 minutes (the default
+[in]visibility timeout) before starting it. If this is onerous, change
+`FollowUntilStopped` to `false` in CloudFormation. Retries will stop after the
+successful call to `stop_db_cluster` or `stop_db_instance`, eliminating the
+race condition.
 
 ### Further Reading
 

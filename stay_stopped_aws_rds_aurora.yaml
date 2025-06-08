@@ -25,6 +25,24 @@ Parameters:
       - "false"
       - "true"
 
+  FollowUntilStopped:
+    Type: String
+    Description: >-
+      Whether to monitor after successfully requesting that a database be
+      stopped. The default, "true", provides an ERROR-level log entry or an
+      error (dead letter) queue message if the stop request is not complete
+      QueueMaxReceiveCount * QueueVisibilityTimeoutSecs (defaults of 160
+      times and 540 seconds or 9 minutes give 24 hours) after AWS started the
+      database. If someone starts the database manually after it enters
+      "stopped" status but before that status is detected, the database will
+      be stopped and it will be necessary to wait QueueVisibilityTimeoutSecs
+      before starting it definitively. Changing this to "false" eliminates
+      the conflict window, at the expense of the completion monitoring.
+    Default: "true"
+    AllowedValues:
+      - "false"
+      - "true"
+
   PlaceholderAdvancedParameters:
     Type: String
     Default: ""
@@ -222,6 +240,7 @@ Metadata:
           default: Essential
         Parameters:
           - Enable
+          - FollowUntilStopped
       - Label:
           default: Advanced...
         Parameters:
@@ -260,6 +279,8 @@ Metadata:
         default: Suggested stack name
       Enable:
         default: Enable?
+      FollowUntilStopped:
+        default: Follow the database after a stop request?
       PlaceholderAdvancedParameters:
         default: Do not change the parameters below, unless necessary!
       Test:
@@ -296,6 +317,8 @@ Metadata:
 Conditions:
 
   EnableTrue: !Equals [ !Ref Enable, "true" ]
+
+  FollowUntilStoppedTrue: !Equals [ !Ref FollowUntilStopped, "true" ]
 
   TestTrue: !Equals [ !Ref Test, "true" ]
 
@@ -755,6 +778,10 @@ Resources:
       Architectures:
         - arm64
       Runtime: python3.13
+      Environment:
+        Variables:
+          "FOLLOW_UNTIL_STOPPED":
+            !If [ FollowUntilStoppedTrue, "", !Ref AWS::NoValue ]
       Handler: index.lambda_handler
       Code:
         ZipFile: |
@@ -765,6 +792,7 @@ Resources:
           """
 
           from logging import getLogger, INFO, WARNING, ERROR
+          from os import environ as os_environ
           from json import dumps as json_dumps, loads as json_loads
           from re import match as re_match
           from botocore.exceptions import ClientError as botocore_ClientError
@@ -774,6 +802,8 @@ Resources:
           logger = getLogger()
           # Skip "credentials in environment" INFO message, unavoidable in AWS Lambda:
           getLogger("botocore").setLevel(WARNING)
+
+          FOLLOW_UNTIL_STOPPED = ("FOLLOW_UNTIL_STOPPED" in os_environ)  # pylint: disable=superfluous-parens
 
 
           def log(entry_type, entry_value, log_level):
@@ -1096,7 +1126,7 @@ Resources:
               stop_db_kwargs = {}
               result = None
               log_level = INFO
-              retry = True
+              retry = FOLLOW_UNTIL_STOPPED
 
               try:
                 sqs_message_id = sqs_message["messageId"]
