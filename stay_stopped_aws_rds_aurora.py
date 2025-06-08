@@ -5,6 +5,7 @@ github.com/sqlxpert/stay-stopped-aws-rds-aurora  GPLv3  Copyright Paul Marcelin
 """
 
 from logging import getLogger, INFO, WARNING, ERROR
+from os import environ as os_environ
 from json import dumps as json_dumps, loads as json_loads
 from re import match as re_match
 from botocore.exceptions import ClientError as botocore_ClientError
@@ -14,6 +15,8 @@ from boto3 import client as boto3_client
 logger = getLogger()
 # Skip "credentials in environment" INFO message, unavoidable in AWS Lambda:
 getLogger("botocore").setLevel(WARNING)
+
+FOLLOW_UNTIL_STOPPED = ("FOLLOW_UNTIL_STOPPED" in os_environ)  # pylint: disable=superfluous-parens
 
 
 def log(entry_type, entry_value, log_level):
@@ -113,7 +116,7 @@ def assess_db_status(db_status):
 
       case "stopped" | "deleting" | "deleted":
         log_level = INFO
-        # Terinal status, success!
+        # Terminal status, success!
 
       case (
           "starting"  # Stop not yet successfully requested
@@ -336,7 +339,7 @@ def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
     stop_db_kwargs = {}
     result = None
     log_level = INFO
-    retry = True
+    retry = FOLLOW_UNTIL_STOPPED
 
     try:
       sqs_message_id = sqs_message["messageId"]
