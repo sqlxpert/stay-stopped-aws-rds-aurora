@@ -8,9 +8,15 @@ You can keep an EC2 compute instance stopped as long as you want, but it's not
 possible to stop an RDS or Aurora database longer than 7 days. After AWS
 starts your database on the 7th day, this tool automatically stops it again.
 
-Stay-Stopped is for databases you use sporadically, perhaps for development
-and testing. If it would cost too much to keep a database running but take too
-long to re-create it, this tool might save you money, time, or both.
+Stay-Stopped is for databases you use sporadically:
+
+- development
+- testing
+- occasional reference
+- retired, but kept just in case
+
+If it would cost too much to keep a database running but take too long to
+re-create it, this tool might save you money, time, or both.
 
 AWS does not charge for database instance hours while an
 [RDS database instance is stopped](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StopInstance.html#USER_StopInstance.Benefits)
@@ -40,18 +46,20 @@ The design is simple but robust:
   and
   [RDS-EVENT-0153](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0153)
   (Aurora database cluster).
-  You do not need to set any opt-in or opt-out tags. As long as _you_, rather
-  than _AWS_, started your database this time, Stay-Stopped won't stop it.&sup1;
+
+- You do not need to set any opt-in or opt-out tags. As long as _you_, rather
+  than _AWS_, started your currently-running databases, Stay-Stopped won't
+  stop them.&sup1;
 
 - <a name="design-idempotence"></a>Stopping stuff is inherently
   idempotent: keep trying until it stops! This tool tries every 9 minutes
   until the database is stopped, an unexpected error occurs, or 24 hours pass.
 
-  > Many alternative solutions introduce a latent bug (a
+  > Many alternatives introduce a latent bug (a
   [race condition](https://en.wikipedia.org/wiki/Race_condition))
-  by checking whether a database is ready _before_ trying to stop it,
-  insisting on catching the database while it's `available`, or not waiting
-  long enough. To understand why this matters and what can go wrong, see
+  by checking status _before_ trying to stop a database, always expecting to
+  catch the database while it's `available`, or not waiting long enough. To
+  understand why this matters and what can go wrong, see
   [Perspective](#perspective),
   below.
 
@@ -66,14 +74,14 @@ The design is simple but robust:
 - Once in a while it's still important to start a database before its
   maintenance window and leave it running until the window closes.
 
-&sup1; Wait until the database has been in `stopped` status for 9 minutes
-before you start it.
+&sup1; Before manually starting a database, wait until it has been stopped for
+at least 9 minutes.
 
 ### Detailed Diagram
 
 Click to view the architecture diagram and flowchart:
 
-[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow-thumb.png" alt="Relational Database Service Event Bridge events '0153' and '0154' (database started after exceeding 7-day maximum stop time) go to the main Simple Queue Service queue. The Amazon Web Services Lambda function stops RDS instance or the Aurora cluster. If the database's status is invalid, the queue message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' stops retries, as does an error status. After 160 tries (24 hours), the message goes to the error (dead letter) SQS queue." height="144" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png?raw=true "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow-thumb.png" alt="Relational Database Service Event Bridge events '0153' and '0154' (database started after exceeding 7-day maximum stop time) go to the main Simple Queue Service queue. The Amazon Web Services Lambda function stops the RDS instance or the Aurora cluster. If the database's status is invalid, the queue message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' ends retries, as does an error status. After 160 tries (24 hours), the message goes to the error (dead letter) SQS queue." height="144" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png?raw=true "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
 
 ## Get Started
 
@@ -92,18 +100,28 @@ Click to view the architecture diagram and flowchart:
 
  3. Wait 8 days, then check that your
     [RDS or Aurora database](https://console.aws.amazon.com/rds/home#databases:)
-    is in the stopped state. So much for a "quick" start! If you don't want to
-    wait, see
+    is stopped. After clicking the RDS database instance name or the Aurora
+    database cluster name, open the "Logs & events" tab and scroll to "Recent
+    events". At the right, click to change "Last 1 day" to "Last 2 weeks". The
+    "System notes" column should include the following entries, listed here
+    from newest to oldest:
+
+    |RDS Database Instance|Aurora Database Cluster|
+    |:---|:---|
+    |DB instance stopped|DB cluster stopped|
+    |DB instance started|DB cluster started|
+    |DB instance is being started due to it exceeding the maximum allowed time being stopped.|DB cluster is being started due to it exceeding the maximum allowed time being stopped.|
+
+    (Recovery, restart, and other events may appear in between.)
+
+    So much for a "quick" start! If you don't want to wait the 8 days, see
     [Testing](#testing),
     below.
 
- 4. Optional: Double-check in the
-    [StayStopped CloudWatch log group](https://console.aws.amazon.com/cloudwatch/home#logsV2:log-groups$3FlogGroupNameFilter$3DStayStoppedRdsAurora-).
-
 ## Multi-Account, Multi-Region
 
-For reliability, Stay-Stopped works completely independently in each region, in
-each AWS account. To deploy in multiple regions and/or AWS accounts,
+For reliability, Stay-Stopped works independently in each region, in each AWS
+account. To deploy in multiple regions and/or AWS accounts,
 
  1. Delete any standalone `StayStoppedRdsAurora` CloudFormation _stacks_ in
     your target regions and/or AWS accounts.
@@ -287,7 +305,7 @@ and
 [RDS-EVENT-0151](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster)
 (Aurora database cluster). Although it won't stop databases that are already
 running and remain running, **&#9888; while in test mode Stay-Stopped will
-stop any database that is newly created or newly started**. To test, manually
+stop databases that you start manually**. To test, manually
 start a stopped
 [RDS or Aurora database](https://console.aws.amazon.com/rds/home#databases:).
 
@@ -375,12 +393,11 @@ hidden controls such as Service and Resource control policies (SCPs and RCPs)
 As noted in the Design section, many alternative solutions introduce a latent
 bug (a
 [race condition](https://en.wikipedia.org/wiki/Race_condition))
-by checking whether a database is ready _before_ trying to stop it,
-insisting on catching the database while it's `available`, or not waiting
-long enough.
+by checking status _before_ trying to stop a database, always expecting to
+catch the database while it's `available`, or not waiting long enough.
 
 <details>
-  <summary>More about idempotence, race conditions, latent bugs...</summary>
+  <summary>About idempotence, race conditions, and latent bugs...</summary>
 
 Consider two alternative solutions, described as of May, 2025:
 
@@ -404,10 +421,10 @@ status, _before_ the next status check?
 [Lambda has a 15-minute maximum timeout](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html).
 The function might never get a chance to request that the database be stopped.
 
-> Waiting _within_ the Lambda function might seem wasteful, but in this case,
-the cost is less than 2¢ &mdash; negligible for a function triggered once per
-database per week. Lambda's maximum timeout notwithstanding, I appreciate the
-author's instinct for minimal infrastructure.
+> Waiting _within_ the Lambda function might seem wasteful, but 15 minutes
+costs less than 2¢ &mdash; negligible for a function triggered once per
+database per week. Even though Lambda's maximum timeout is too short for this
+application, I appreciate the author's instinct for minimal infrastructure.
 
 ### Step Function Alternative
 
@@ -418,13 +435,15 @@ Before attempting to stop the database, the state machine waits as long as
 necessary for the database to become `available`; long `maintenance` etc.
 would be accommodated. After the database finishes `starting` and becomes
 `available`, what if a person or system (perhaps an infrastructure-as-code
-system) happens to delete it before the next status check? That's unlikely,
-but what if someone notices that the database is now `available`, gets
-impatient, and stops it manually? Barring an error, `available` is the _only_
-way out of the status-checking loop
+system) happens to delete it before the next status check, putting it in
+`deleting` status? That's unlikely, but what if someone notices that the
+database is now `available` and stops it manually, putting it in `stopping`
+status?
+
+Barring an error, `available` is the _only_ way out of the status check loop
 ([stop-rds-instance-state-machine.json L30-L40](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/cfdd3a1/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L30-L40)).
 No
-[overall state machine timeout](https://docs.aws.amazon.com/step-functions/latest/dg/statemachine-structure.html#statemachinetimeoutseconds)
+[state machine timeout](https://docs.aws.amazon.com/step-functions/latest/dg/statemachine-structure.html#statemachinetimeoutseconds)
 is defined
 ([L1-L4](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/cfdd3a1/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L1-L4)).
 The Step Function would keep checking every 5 minutes for a status that won't
@@ -435,37 +454,37 @@ starts the database manually _with the intention of using it_.
 is made, the state machine sees it through until the database's status changes
 from `stopping` to `stopped`.
 
-![Retrieve Relational Database Service Instance State, is Instance Available?, and wait Five Minutes are joined in a loop. The only exit paths are from is Instance Available? to stop RDS Instance, if RDS Instance State is 'available'; and from retrieve RDS Instance State and stop RDS Instance to fall-back, if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png?raw=true "Annotated state machine from the AWS Architecture Blog solution")
+!['Retrieve Relational Database Service Instance State', 'is Instance Available?', and 'wait Five Minutes' are joined in a loop. The only exit paths are from 'is Instance Available?' to 'stop RDS Instance', if 'RDS Instance State' is 'available'; or from 'retrieve RDS Instance State' and 'stop RDS Instance' to 'fall-back', if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png?raw=true "Annotated state machine from the AWS Architecture Blog solution")
 
 ### Stay-Stopped: Queue Before Lambda
 
 Stay-Stopped requires only one Lambda function, but inserts an SQS queue
-between EventBridge and Lambda. The Lambda function does not wait on the
+between EventBridge and Lambda. The Lambda function never waits for the
 database. SQS counts up toward a
 [message [in]visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html),
 making it possible to periodically retry the Lambda function, with the
 original EventBridge event message, until the return value indicates success.
 If
 [maxReceiveCount](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html#policies-for-dead-letter-queues)
-is reached, SQS stops trying and moves the message to a dead letter queue.
+is reached instead, SQS gives up and moves the message to a dead letter queue.
 Between the [in]visibility timeout and the receive count, SQS maintains all
 the state that's needed.
 
-Given that the Lambda function receives the _original_ event mesasage again
+Given that the Lambda function receives the _original_ event message again
 and again, how does Stay-Stopped track the database's progress from `starting`
-toward the status from which it can be stopped (`available`) and then toward a
-final status (usually `stopped`)? It doesn't. One Lambda function does the
+to `available` (the only status from which it can be stopped) and then to
+`stopped` (or another final status)? It doesn't. One Lambda function does the
 same thing each time it's invoked, avoiding the need for a Step Function state
 machine.
 
 Each time the Lambda function is invoked, it tries to stop the database by
-calling `stop_db_cluster` (in response to an Aurora event) or
-`stop_db_instance` (RDS). Unlike a request to stop an EC2 compute instance,
-which succeeds even if the EC2 instance is stopping or already stopped, a
-request to stop an RDS database instance or an Aurora database cluster fails
-if the database is stopping or already stopped. More importantly, it also
-fails if the database is in `maintenance` or another similar status, and not
-ready to be stopped.
+calling `stop_db_cluster` (for an Aurora event) or `stop_db_instance` (for
+RDS). Unlike a request to stop an EC2 compute instance, which succeeds even if
+the EC2 instance is stopping or already stopped, a request to stop an RDS
+database instance or an Aurora database cluster fails if the database is
+`stopping` or already `stopped`. More importantly, it also fails if the
+database is in `maintenance` or another similar status, and not ready to be
+stopped.
 
  1. Aurora mentions whatever offending database status in the error message:
 
@@ -500,18 +519,18 @@ The function supports batches of event messages, each representing a different
 database to stop. It's improbable that two stopped databases would be started
 within a short window of time. Instead, partial batch responses provide a way
 to provoke retries, short of raising an exception or calling `sys.exit(1)`,
-either of which would also provoke the needless
-[shutdown and re-initialization of the Lambda runtime environment](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html#runtimes-lifecycle-invoke-with-errors).
+either of which would needlessly
+[provoke the shutdown and re-initialization of the Lambda runtime environment](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html#runtimes-lifecycle-invoke-with-errors).
 
-> Retries continue until the database reaches a final status (usually
-`stopped`). If someone starts the database manually after it enters `stopped`
-status but before Stay-Stopped detects this, Stay-Stopped will stop the
-database a second time. A race condition, yes, but one that is documented and
-doesn't interfere with the main goal: stopping! Wait until a database has been
-in `stopped` status for 9 minutes (the default [in]visibility timeout) before
-starting it. To eliminate the problem, change `FollowUntilStopped` to `false`
-in CloudFormation. Retries will stop right after the successful call to
-`stop_db_cluster` or `stop_db_instance`.
+> Retries continue until the database reaches a final status. If someone
+starts the database manually after it enters `stopped` status but before the
+next and final retry, Stay-Stopped will stop the database another time &mdash;
+a race condition, yes, but one that's documented and doesn't interfere with
+stopping stuff the first time! Before manually starting a database, wait until
+it has been `stopped` for at least 9 minutes (the tool's default
+[in]visibility timeout). To eliminate the problem, change `FollowUntilStopped`
+to `false` in CloudFormation. Retries will end as soon as AWS successfully
+receives the `stop_db_cluster` or `stop_db_instance` request.
 
 ### Further Reading
 

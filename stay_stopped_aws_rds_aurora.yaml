@@ -34,11 +34,11 @@ Parameters:
       QueueMaxReceiveCount * QueueVisibilityTimeoutSecs (defaults of 160
       times and 540 seconds or 9 minutes give 24 hours) after AWS started the
       database. If someone starts the database manually after it enters
-      "stopped" status but before this is detected, the database will be
-      stopped a second time and it will be necessary to wait
-      QueueVisibilityTimeoutSecs before starting it definitively. Changing
-      the value to "false" eliminates the conflict window, at the expense of
-      the completion monitoring.
+      "stopped" status but before the next and final retry, the database will
+      be stopped another time. This window lasts QueueVisibilityTimeoutSecs
+      (540 seconds or 9 minutes, by default) and occurs every 7th day, but at
+      an unpredictable time of day. Changing the value to "false" eliminates
+      the conflict window, at the expense of the completion monitoring.
     Default: "true"
     AllowedValues:
       - "false"
