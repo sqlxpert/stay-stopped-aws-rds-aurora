@@ -259,7 +259,7 @@ Check the:
       message to the main SQS queue or denies SQS permission to invoke the AWS
       Lambda function.
 
- 3. [CloudTrail Event history](https://console.aws.amazon.com/cloudtrailv2/home?ReadOnly=false/events?ReadOnly=false)
+ 3. [CloudTrail Event history](https://console.aws.amazon.com/cloudtrailv2/home?ReadOnly=false/events#/events?ReadOnly=false)
     - CloudTrail events with an "Error code" may indicate permissions
       problems,
       typically due to the local security configuration.
