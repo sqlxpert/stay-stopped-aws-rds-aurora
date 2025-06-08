@@ -10,15 +10,14 @@ starts your database on the 7th day, this tool automatically stops it again.
 
 Stay-Stopped is for databases you use sporadically:
 
-- development
 - testing
+- development
 - occasional reference
 - retired, but kept just in case
 
 If it would cost too much to keep a database running but take too long to
-re-create it, this tool might save you money, time, or both.
-
-AWS does not charge for database instance hours while an
+re-create it, this tool might save you money, time, or both. AWS does not
+charge for database instance hours while an
 [RDS database instance is stopped](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StopInstance.html#USER_StopInstance.Benefits)
 or an
 [Aurora database cluster is stopped](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-cluster-stop-start.html#aurora-cluster-start-stop-overview).
@@ -106,15 +105,15 @@ Click to view the architecture diagram and flowchart:
     "System notes" column should include the following entries, listed here
     from newest to oldest:
 
-    |RDS Database Instance|Aurora Database Cluster|
+    |RDS|Aurora|
     |:---|:---|
     |DB instance stopped|DB cluster stopped|
     |DB instance started|DB cluster started|
     |DB instance is being started due to it exceeding the maximum allowed time being stopped.|DB cluster is being started due to it exceeding the maximum allowed time being stopped.|
 
-    (Recovery, restart, and other events may appear in between.)
+    > Recovery, restart, and other events may appear in between.
 
-    So much for a "quick" start! If you don't want to wait the 8 days, see
+    > So much for a "quick" start! If you don't want to wait the 8 days, see
     [Testing](#testing),
     below.
 
@@ -399,6 +398,7 @@ catch the database while it's `available`, or not waiting long enough.
 <details>
   <summary>About idempotence, race conditions, and latent bugs...</summary>
 
+<br/>
 Consider two alternative solutions, described as of May, 2025:
 
 ### Pure Lambda Alternative
