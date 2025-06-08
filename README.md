@@ -421,10 +421,10 @@ status, _before_ the next status check?
 [Lambda has a 15-minute maximum timeout](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html).
 The function might never get a chance to request that the database be stopped.
 
-> Waiting _within_ the Lambda function might seem wasteful, but 15 minutes
-costs less than 2¢ &mdash; negligible for a function triggered once per
-database per week. Even though Lambda's maximum timeout is too short for this
-application, I appreciate the author's instinct for minimal infrastructure.
+> Waiting within the Lambda function might seem wasteful, but 15 minutes costs
+less than 2¢ &mdash; negligible for a function triggered once per database per
+week. Even though Lambda's maximum timeout is too short for this application,
+I appreciate the author's instinct for minimal infrastructure.
 
 ### Step Function Alternative
 
@@ -459,8 +459,8 @@ from `stopping` to `stopped`.
 ### Stay-Stopped: Queue Before Lambda
 
 Stay-Stopped requires only one Lambda function, but inserts an SQS queue
-between EventBridge and Lambda. The Lambda function never waits for the
-database. SQS counts up toward a
+between EventBridge and Lambda. Waiting occurs outside the Lambda function.
+SQS counts up toward a
 [message [in]visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html),
 making it possible to periodically retry the Lambda function, with the
 original EventBridge event message, until the return value indicates success.
