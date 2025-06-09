@@ -8,13 +8,13 @@ You can keep an EC2 compute instance stopped as long as you want, but it's not
 possible to stop an RDS or Aurora database longer than 7 days. After AWS
 starts your database on the 7th day, this tool automatically stops it again.
 
-Stay-Stopped is for databases you use sporadically:
+Use cases:
 
 - testing
 - development
 - infrequent reference
-- retired, but kept just in case
 - vacation or leave beyond one week
+- retired databases kept just in case
 
 If it would cost too much to keep a database running but take too long to
 re-create it, this tool might save you money, time, or both. AWS does not
