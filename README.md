@@ -545,7 +545,7 @@ Jump to:
 - [Waiting within the Lambda](#waiting-within-the-lambda)
 - ["Fixing" a Race Condition by Adding Another](#fixing-a-race-condition-by-adding-another)
 - [Spaghetti Code and Meatballs](#spaghetti-code-and-meatballs)
-- [Still Fixated on Tags)](#still-fixated-on-tags)
+- [Still Fixated on Tags](#still-fixated-on-tags)
 - [Amazon Q Developer Did Not Help](#amazon-q-developer-did-not-help)
 
 Amazon Q Developer's initial response to my prompt to write a Lambda function
