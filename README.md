@@ -54,7 +54,8 @@ The design is simple but robust:
   idempotent: keep trying until it stops! This tool tries every 9 minutes
   until the database is stopped, an unexpected error occurs, or 24 hours pass.
 
-  > Many alternatives introduce a latent bug (a
+  > Many alternatives (including AI-generated ones from Amazon Q Developer)
+  introduce a latent bug (a
   [race condition](https://en.wikipedia.org/wiki/Race_condition))
   by checking status _before_ trying to stop a database, always expecting to
   catch the database while it's `available`, or not waiting long enough. To
@@ -389,8 +390,8 @@ hidden controls such as Service and Resource control policies (SCPs and RCPs)
 
 ## Perspective
 
-As noted in the Design section, many alternative solutions introduce a latent
-bug (a
+As noted in the Design section, many alternative solutions (including
+AI-generated ones from Amazon Q Developer) introduce a latent bug (a
 [race condition](https://en.wikipedia.org/wiki/Race_condition))
 by checking status _before_ trying to stop a database, always expecting to
 catch the database while it's `available`, or not waiting long enough.
@@ -399,8 +400,9 @@ catch the database while it's `available`, or not waiting long enough.
   <summary>About idempotence, race conditions, and latent bugs...</summary>
 
 <br/>
-Compare two alternative solutions, described as of May, 2025, then
-Stay-Stopped, and finally, an AI-generated alternative...
+Let's compare two alternative solutions, described as of May, 2025, then
+Stay-Stopped, and finally, a series of AI-generated solution from June,
+2025...
 
 ### Pure Lambda Alternative
 
@@ -435,13 +437,9 @@ by Islam Ghanim, on AWS's own _Architecture Blog_, uses an AWS Step Function.
 Before attempting to stop the database, the state machine waits as long as
 necessary for the database to become `available`; long `maintenance` etc.
 would be accommodated. After the database finishes `starting` and becomes
-`available`, what if a person or system (perhaps an infrastructure-as-code
-system) happens to delete it before the next status check, putting it in
-`deleting` status? That's unlikely, but what if someone notices that the
-database is now `available` and stops it manually, putting it in `stopping`
-status?
-
-Barring an error, `available` is the _only_ way out of the status check loop
+`available`, what if someone notices and stops it manually, putting it in
+`stopping` status? Barring an error, `available` is the _only_ way out of the
+status check loop
 ([stop-rds-instance-state-machine.json L30-L40](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/cfdd3a1/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L30-L40)).
 No
 [state machine timeout](https://docs.aws.amazon.com/step-functions/latest/dg/statemachine-structure.html#statemachinetimeoutseconds)
@@ -455,7 +453,7 @@ starts the database manually _with the intention of using it_.
 is made, the state machine sees it through until the database's status changes
 from `stopping` to `stopped`.
 
-!['Retrieve Relational Database Service Instance State', 'is Instance Available?', and 'wait Five Minutes' are joined in a loop. The only exit paths are from 'is Instance Available?' to 'stop RDS Instance', if 'RDS Instance State' is 'available'; or from 'retrieve RDS Instance State' and 'stop RDS Instance' to 'fall-back', if an error is caught.](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png?raw=true "Annotated state machine from the AWS Architecture Blog solution")
+[<img src="media/aws-architecture-blog-stop-rds-instance-state-machine-annotated-thumb.png" alt="'Retrieve Relational Database Service Instance State', 'is Instance Available?', and 'wait Five Minutes' are joined in a loop. The only exit paths are from 'is Instance Available?' to 'stop RDS Instance', if 'RDS Instance State' is 'available'; or from 'retrieve RDS Instance State' and 'stop RDS Instance' to 'fall-back', if an error is caught." height="144" />](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png?raw=true "Annotated state machine from the AWS Architecture Blog solution")
 
 ### Stay-Stopped: Queue Before Lambda
 
@@ -513,63 +511,51 @@ stopped.
 A success response from `stop_db_cluster` or `stop_db_instance` is _not_
 success for the Lambda function. Unless the database is in a final status such
 as `stopped`, the Lambda function
-[returns a batch item failure](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-errorhandling.html#services-sqs-batchfailurereporting),
-provoking retries (up to `maxReceiveCount`).
-
-The function supports batches of event messages, each representing a different
-database to stop. It's improbable that two stopped databases would be started
-within a short window of time. Instead, partial batch responses provide a way
-to provoke retries, short of raising an exception or calling `sys.exit(1)`,
-either of which would needlessly
+[returns a batch item failure](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-errorhandling.html#services-sqs-batchfailurereporting).
+Batches are unlikely in this application, but partial batch responses provide
+a way to provoke retries, short of raising an exception or calling
+`sys.exit(1)`, either of which would needlessly
 [provoke the shutdown and re-initialization of the Lambda runtime environment](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html#runtimes-lifecycle-invoke-with-errors).
 
-> Retries continue until the database reaches a final status. If someone
-starts the database manually after it enters `stopped` status but before the
-next and final retry, Stay-Stopped will stop the database another time &mdash;
-a race condition, yes, but one that's documented and doesn't interfere with
-stopping stuff the first time! Before manually starting a database, wait until
-it has been `stopped` for at least 9 minutes (the tool's default
-[in]visibility timeout). To eliminate the problem, change `FollowUntilStopped`
-to `false` in CloudFormation. Retries will end as soon as AWS successfully
-receives the `stop_db_cluster` or `stop_db_instance` request.
+> If someone starts the database manually after it enters `stopped` status but
+before the next and final retry, Stay-Stopped will stop the database another
+time &mdash; a race condition, yes, but one that's documented and doesn't
+interfere with stopping stuff the first time! Before manually starting a
+database, wait until it has been `stopped` for at least 9 minutes (the tool's
+default [in]visibility timeout). Or, change `FollowUntilStopped` to `false` in
+CloudFormation.
 
-### Amazon Q Artificial Intelligence Alternative
+### Amazon Q Artificial Intelligence Solutions
 
 After finishing Stay-Stopped, I decided to check whether
 [Amazon Q Developer](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-chat.html)
-might have helped with its development. This section is so tedious and
-disappointing that I'm folding it and adding a table of contents. Enter if you
-dare!
+might have helped with its development. This section is so dispiriting that
+I'm folding it. Read on, if you dare!
 
 <details>
-  <summary>Details of the AI-generated alternative...</summary>
+  <summary>Details of the AI-generated solutions...</summary>
 
 <br/>
 
 Jump to:
-[An Unnecessary Call for Every Database](#an-unnecessary-call-for-every-database)
-&bull;
-[The Wrong Event](#the-wrong-event)
-&bull;
-[Waiting within the Lambda](#waiting-within-the-lambda)
-&bull;
-["Fixing" a Race Condition by Adding Another](#fixing-a-race-condition-by-adding-another)
-&bull;
-[Spaghetti Code and Meatballs](#spaghetti-code-and-meatballs)
-&bull;
-[Still Obsessed with Labels (Tags)](#still-obsessed-with-labels-tags)
 
-The initial response to my prompt to write a Lambda function that keeps RDS
-databases stopped longer than 7 days didn't process events at all. It drew a
-list of database instances from `describe_db_instances`, looped over the
-running (`available`) ones, and called `stop_db_instance` if a database had
-been created more than 7 days ago &mdash; disaster, even in non-production
-environments!
+- [An Unnecessary Call for Every Database](#an-unnecessary-call-for-every-database)
+- [The Wrong Event](#the-wrong-event)
+- [Waiting within the Lambda](#waiting-within-the-lambda)
+- ["Fixing" a Race Condition by Adding Another](#fixing-a-race-condition-by-adding-another)
+- [Spaghetti Code and Meatballs](#spaghetti-code-and-meatballs)
+- [Still Fixated on Tags)](#still-fixated-on-tags)
+- [Amazon Q Developer Did Not Help](#amazon-q-developer-did-not-help)
+
+Amazon Q Developer's initial response to my prompt to write a Lambda function
+that keeps RDS databases stopped longer than 7 days didn't handle events at
+all. It drew a list of databases from `describe_db_instances` and called
+`stop_db_instance` on any `available` ones that had been created more than 7
+days ago &mdash; disaster, even in non-production environments!
 
 #### An Unnecessary Call for Every Database
 
-Amazon Q Developer's code contained mistakes repeated all over the Internet
-and even in
+The code repeated mistakes found all over the Internet and in
 [official AWS solutions on re:Post](https://repost.aws/knowledge-center/rds-stop-seven-days).
 The following exchange is telling:
 
@@ -587,8 +573,7 @@ properties
 information across many services
 ```
 
-I knew from my own work that this had been true in 2017 but stopped being true
-sometime before 2022.
+I knew from my own work that this had changed years ago.
 
 > According to
 [boto3 / RDS / Client / describe_db_instances](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/rds/client/describe_db_instances.html),
@@ -602,9 +587,7 @@ response.
 
 #### The Wrong Event
 
-I asked about events, first without giving the relevant event number.
-
-Amazon Q Developer drafted the following:
+I asked about events. Amazon Q Developer drafted this:
 
 ```yaml
 Pattern:
@@ -621,12 +604,12 @@ Pattern:
       - prefix: "DB instance is available"
 ```
 
-The last two messages don't exist, which leaves only one matching event,
+The last two messages don't exist, which leaves one matching event,
 [RDS-EVENT-0006](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0006),
-"DB instance restarted." This event occurs in situations other than when AWS
-starts a database that has been stopped for 7 days.
+"DB instance restarted." It occurs in situations other than when AWS starts a
+database that has been stopped for 7 days.
 
-I took pity on Q and mentioned
+I took pity on Amazon Q Developer and mentioned
 [RDS-EVENT-0154](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0154),
 "DB instance is being started due to it exceeding the maximum allowed time
 being stopped."
@@ -651,9 +634,8 @@ says "The startup process can take minutes to hours."
 ```plaintext
 Looking at the AWS documentation you've linked, you're absolutely right - the
 RDS startup process can take anywhere from "minutes to hours" depending on
-various factors. This presents a significant challenge for our Lambda function
-approach.
-
+various factors.
+[...]
 Given Lambda's execution time limitations (maximum of 15 minutes), we can't 
 reliably wait for an RDS instance to complete startup within a single Lambda 
 invocation. Here are our best options:
@@ -679,11 +661,10 @@ EventBridge rule
 [...]
 ```
 
-If we ignore the risky self-modifying infrastructure in Option 3, we see that
-Options 3 and 4 are like "distractor" responses for test questions meant to
-distinguish pre-cloud habits from cloud idioms. If setting up a `cron` job is
-no longer the right answer, then why would setting up a "Lambda that runs on a
-schedule" be?
+Option 3 requires risky self-modifying infrastructure, and Option 4 is like a
+"distractor" response for a test question meant to distinguish system
+administration from DevOps. If a `cron` job is no longer right, why would a
+"Lambda that runs on a schedule" make sense?
 
 #### "Fixing" a Race Condition by Adding Another
 
@@ -691,7 +672,7 @@ schedule" be?
 
 ```plaintext
 Looking at the Lambda function code, there is a potential race condition in how
-it handles RDS instance state changes. Let me analyze this:
+it handles RDS instance state changes.
 [...]
 1. Event Processing Delay: There might be a delay between when AWS restarts the 
 instance and when our Lambda processes the event
@@ -706,7 +687,6 @@ Amazon Q Developer offered to "Double-check instance state before stopping",
 adding a second `describe_db_instances` call and a second race condition!
 
 ```python
-  # Get instance details
   try:
     instance_response = rds.describe_db_instances(DBInstanceIdentifier=source_id)
     # [...]
@@ -725,8 +705,6 @@ adding a second `describe_db_instances` call and a second race condition!
         # [...]
         if current_state != 'available':
 ```
-
-Again I took pity on the unfortunate $19-per-month bot!
 
 > I claim that this approach still has a fundamental race condition. Does this
 article give you a hint?
@@ -748,15 +726,12 @@ For example, if we see the instance is in "stopping" state, we should recognize
 this as a successful previous attempt and not try to stop it again.
 ```
 
-> No changes yet. Getting warmer, though! Does a client token really help?
-What if, while SQS and Lambda are waiting between invocations (during the
-visibility timeout) and a human being notices that the DB instance is
-available, and stops it manually?
+> Does a client token really help? What if, while SQS and Lambda are waiting
+between invocations (during the visibility timeout), a human being notices
+that the DB instance is available, and stops it manually?
 
 ```plaintext
-You've raised an excellent point about the limitations of client tokens in this
-scenario. You're right - a client token wouldn't help with the specific race
-condition you've described.
+You've raised an excellent point about the limitations of client tokens [...]
 
 If a human manually stops the instance while our system is waiting between 
 invocations during the visibility timeout, a client token wouldn't detect this 
@@ -771,20 +746,19 @@ whether our specific API call was the one that caused it.
 
 #### Spaghetti Code and Meatballs
 
-Static analysis tools are excellent sources of _free_ advice. I'd expect a
-$19-per-month artificial intelligence bot to be intelligent enough to use
-them. This is what
+Static analysis tools are excellent sources of _free_ advice. I'd expect the
+free variant of a $19 per person per month artificial intelligence bot to be
+smart enough to use them.
 [pylint](https://www.pylint.org/)
-said when I ran it against Amazon Q Developer's code, as it stood at the
-mid-point of the chat:
+said of Amazon Q Developer's code,
 
 - Too many local variables (22/15) (`too-many-locals`)
 - Too many nested blocks (8/5) (`too-many-nested-blocks`)
 - Too many branches (28/12) (`too-many-branches`)
 
-Thankfully, Amazon Q Developer includes comments. Left to my own devices, I
-would never have guessed the purpose of a `stop_db_instance` call bracketed by
-"Stopping RDS instance" and "Successfully initiated stop" log strings!
+At least there are comments to help. I would never have guessed the purpose of
+a `stop_db_instance` call bracketed by "Stopping RDS instance" and
+"Successfully initiated stop" log strings.
 
 ```python
             # Stop the instance
@@ -826,33 +800,25 @@ would never have guessed the purpose of a `stop_db_instance` call bracketed by
     }
 ```
 
-#### Still Obsessed with Labels (Tags)
+#### Still Fixated on Tags
 
-When the goal is to stop a database that had already been stopped for 7 days,
-tags cannot add information. Leaving a database running excludes it
-automatically; if it's running, no event is generated. Conversely, stopping a
-database and leaving it stopped is the way to include it.
-
-(The only potential benefit of tags would come from breaking out
-`rds:StopDBInstance` into its own IAM policy statement and adding an
-[aws:ResourceTag/tag-key](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html#condition-keys-resourcetag)
-[condition](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition.html)
-to that statement, to allow or deny the Lambda function role permission to
-stop certain databases. That's an excellent security design, far beyond the
-level of solutions typically found on the Internet or proposed initially by
-Amazon Q Developer. It's how my other utility,
-[github.com/sqlxpert/lights-off-aws](https://github.com/sqlxpert/lights-off-aws#security)&nbsp;,
-works. For Stay-Stopped, you can achieve
-[attribute-based access control (ABAC)](https://aws.amazon.com/identity/attribute-based-access-control/)
-by writing a customer-managed IAM policy and setting
-`LambdaFnRoleAttachLocalPolicyName`. Most AWS users don't sufficiently lock
-down the right to add, change or remove tags, making such a policy moot.)
+When the goal is to stop databases that had already been stopped for 7 days,
+tags cannot add any information. A previously stopped database is included,
+thanks to `RDS-EVENT-0154`. A running database is excluded, because no event
+is generated for it. The only benefit of tags would be
+[attribute-based access control](https://aws.amazon.com/identity/attribute-based-access-control/),
+which is far beyond the level of solutions typically found on the Internet or
+initially proposed by Amazon Q Developer.
+[github.com/sqlxpert/lights-off-aws uses ABAC](https://github.com/sqlxpert/lights-off-aws/blob/8e45026/cloudformation/lights_off_aws.yaml#L679-L687).
+To implement ABAC for Stay-Stopped, you can write a customer-managed IAM
+policy and set `LambdaFnRoleAttachLocalPolicyName`. Unless you restrict the
+right to add, change and delete tags, it's moot.
 
 According to Amazon Q Developer, "The final solution represents a robust,
 production-ready approach that properly handles the complexities of keeping
 RDS instances stopped even after AWS automatically restarts them." The term
-"final solution" is inappropriate and should not be used by an automated
-language processing system. The final _version_ still included:
+"final solution" is sensitive and should never be used by a code generation
+bot. The final _version_ still included:
 
 ```python
   # Get instance details to check tags
@@ -897,11 +863,20 @@ Here is an `RDS-EVENT-0154` logged during the testing of Stay-Stopped:
 }
 ```
 
-The tags are there for matching, before the event reaches the Lambda function!
-After multiple revision rounds in which I told Amazon Q Developer about
-problems and solutions it should have anticipated, the bot's lack of
-understanding and lack of connection to reality remained apparent until the
-end.
+Why fetch tags separately when they are already present in the event?
+
+#### Amazon Q Developer Did Not Help
+
+After multiple revision rounds in which _I_ told Amazon Q Developer about
+problems and solutions it should have anticipated based on AWS's own
+documentation, the bot's lack of depth was clear. It helped with the _form_ of
+resource definitions, but not with correct _content_. If you don't know the
+extent of the documentation for the AWS services you use, and haven't read it
+yourself, you will not be able to assess the accuracy of Amazon Q Developer's
+claims. If you don't know distributed systems programming practices, you will
+not be able to assess the reliability of the code that Amazon Q Developer
+generates. If you don't know general programming principles, you risk
+accepting generated code that is long, repetitive, and hard to maintain.
 
 </details>
 
