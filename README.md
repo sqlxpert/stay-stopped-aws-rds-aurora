@@ -254,7 +254,6 @@ Check the:
       usually after trying for 24 hours.
     - The message will usually be the original EventBridge event from when AWS
       started the database after it had been stopped for 7 days.
-    - Other message types are possible in rare cases.
 
  3. [CloudTrail Event history](https://console.aws.amazon.com/cloudtrailv2/home?ReadOnly=false/events#/events?ReadOnly=false)
     - CloudTrail events with an "Error code" may indicate permissions
