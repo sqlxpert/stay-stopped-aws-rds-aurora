@@ -12,8 +12,9 @@ Stay-Stopped is for databases you use sporadically:
 
 - testing
 - development
-- occasional reference
+- infrequent reference
 - retired, but kept just in case
+- vacation or leave beyond one week
 
 If it would cost too much to keep a database running but take too long to
 re-create it, this tool might save you money, time, or both. AWS does not
