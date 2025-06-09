@@ -420,8 +420,6 @@ and checks again
 What if the database takes a long time to start? Startup "can take minutes to
 hours", according to the
 [RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StartInstance.html).
-What if the database goes from `available` to `maintenance` or another similar
-status, _before_ the next status check?
 [Lambda has a 15-minute maximum timeout](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html).
 The function might never get a chance to request that the database be stopped.
 
@@ -439,8 +437,8 @@ Before attempting to stop the database, the state machine waits as long as
 necessary for the database to become `available`; long `maintenance` etc.
 would be accommodated. After the database finishes `starting` and becomes
 `available`, what if someone notices and stops it manually, putting it in
-`stopping` status? Barring an error, `available` is the _only_ way out of the
-status check loop
+`stopping` status before the next status check? Barring an error, `available`
+is the _only_ way out of the status check loop
 ([stop-rds-instance-state-machine.json L30-L40](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/cfdd3a1/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L30-L40)).
 No
 [state machine timeout](https://docs.aws.amazon.com/step-functions/latest/dg/statemachine-structure.html#statemachinetimeoutseconds)

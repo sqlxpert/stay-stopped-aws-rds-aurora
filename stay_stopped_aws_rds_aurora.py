@@ -116,11 +116,15 @@ def assess_db_status(db_status):
 
       case "stopped" | "deleting" | "deleted":
         log_level = INFO
-        # Terminal status, success!
+        # Final status, success!
+
+      case "stopping":
+        log_level = INFO
+        retry = FOLLOW_UNTIL_STOPPED
+        # Stop not yet confirmed
 
       case (
           "starting"  # Stop not yet successfully requested
-        | "stopping"  # Stop not yet confirmed
         | "backing-up"
         | "maintenance"
         | "modifying"
