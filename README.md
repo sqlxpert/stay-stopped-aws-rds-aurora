@@ -111,7 +111,7 @@ Click to view the architecture diagram and flowchart:
     |:---|:---|
     |DB instance stopped|DB cluster stopped|
     |DB instance started|DB cluster started|
-    |_Other events possible during startup_|_Other events possible during startup_|
+    |_Various other events possible during startup_|_Various other events possible during startup_|
     |DB instance is being started due to it exceeding the maximum allowed time being stopped.|DB cluster is being started due to it exceeding the maximum allowed time being stopped.|
 
     > So much for a "quick" start! If you don't want to wait the 8 days, see
