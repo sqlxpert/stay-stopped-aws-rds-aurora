@@ -250,15 +250,11 @@ Check the:
 
  2. `StayStoppedRdsAurora-ErrorQueue` (dead letter)
     [SQS queue](https://console.aws.amazon.com/sqs/v3/home#/queues)
-    - The presence of a message in this queue means that Stay-Stopped did not
-      stop a database, usually after trying for 24 hours.
+    - A message in this queue means that Stay-Stopped did not stop a database,
+      usually after trying for 24 hours.
     - The message will usually be the original EventBridge event from when AWS
       started the database after it had been stopped for 7 days.
-    - Different message types are possible in rare cases, such as if critical
-      Stay-Stopped components have been modified or deleted, or the local
-      security configuration denies EventBridge permission to send an event
-      message to the main SQS queue or denies SQS permission to invoke the AWS
-      Lambda function.
+    - Other message types are possible in rare cases.
 
  3. [CloudTrail Event history](https://console.aws.amazon.com/cloudtrailv2/home?ReadOnly=false/events#/events?ReadOnly=false)
     - CloudTrail events with an "Error code" may indicate permissions
