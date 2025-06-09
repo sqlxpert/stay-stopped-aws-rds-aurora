@@ -105,13 +105,12 @@ Click to view the architecture diagram and flowchart:
     database cluster name, open the "Logs & events" tab and scroll to "Recent
     events". At the right, click to change "Last 1 day" to "Last 2 weeks". The
     "System notes" column should include the following entries, listed here
-    from newest to oldest:
+    from newest to oldest. There might be other entries in between.
 
     |RDS|Aurora|
     |:---|:---|
     |DB instance stopped|DB cluster stopped|
     |DB instance started|DB cluster started|
-    |_Various other events possible during startup_|_Various other events possible during startup_|
     |DB instance is being started due to it exceeding the maximum allowed time being stopped.|DB cluster is being started due to it exceeding the maximum allowed time being stopped.|
 
     > So much for a "quick" start! If you don't want to wait the 8 days, see
