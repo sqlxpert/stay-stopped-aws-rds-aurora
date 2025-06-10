@@ -852,7 +852,7 @@ variable, a function, and a `describe_db_instances` call, comprising 14+ extra
 lines of executable Python code. My earlier complaint that
 `describe_db_instances` does indeed return tags seems to have biased the bot
 against `list_tags_for_resource`, which would be appropriate this time &mdash;
-_if_ it were necessary to fetch tags and if tags made sense for this
+if it were necessary to fetch tags and if tags made sense for this
 application.
 
 ```json
