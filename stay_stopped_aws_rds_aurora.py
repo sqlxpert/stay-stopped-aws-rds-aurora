@@ -154,7 +154,8 @@ def assess_db_status(db_status):
         # Status will probably change
 
       case (
-          "inaccessible-encryption-credentials-recoverable"
+          "available"  # Not expected after stop_db_instance/stop_db_cluster
+        | "inaccessible-encryption-credentials-recoverable"
         # RDS database instance only:
         | "incompatible-network"
         | "incompatible-option-group"

@@ -399,7 +399,7 @@ Stay-Stopped, and finally, a series of AI-generated solution from June,
 
 [Stop Amazon RDS/Aurora Whenever They Start](https://aws.plainenglish.io/stop-amazon-rds-aurora-whenever-they-start-with-lambda-and-eventbridge-c8c1a88f67d6)
 \[[code](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f)\]
-by shimo, from the _AWS In Plain English_ blog on Medium, comprises a single
+by shimo, from the _AWS in Plain English_ blog on Medium, comprises a single
 Lambda function, which checks that the database is `available` before stopping
 it
 ([L48-L51](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f#file-lambda_stop_rds-py-L48-L51)).
@@ -539,8 +539,8 @@ Jump to:
 Amazon Q Developer's initial response to my prompt to write a Lambda function
 that keeps RDS databases stopped longer than 7 days didn't handle events at
 all. It drew a list of databases from `describe_db_instances` and called
-`stop_db_instance` on any `available` ones that had been created more than 7
-days ago &mdash; disaster, even in non-production environments!
+`stop_db_instance` on `available` ones that had been created more than 7 days
+ago &mdash; disaster!
 
 #### An Unnecessary Call for Every Database
 
