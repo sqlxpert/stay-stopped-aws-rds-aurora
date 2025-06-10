@@ -1,6 +1,6 @@
 # Stay Stopped, RDS and Aurora!
 
-Reliably keep AWS databases stopped when not needed, to save money
+_Reliably keep AWS databases stopped when not needed, to save money_
 
 ## Purpose
 
@@ -39,20 +39,20 @@ Jump to:
 
 The design is simple but robust:
 
-- This tool only stops databases that _AWS_ is starting after they've been
-  stopped for 7 days:
+- You do not need to set any opt-in or opt-out tags. If a database has been
+  running continuously, it  will keep running. If it was stopped for 7 days,
+  Stay-Stopped will stop it again. The tool responds to
   [RDS-EVENT-0154](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0154)
   (RDS database instance)
   and
   [RDS-EVENT-0153](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0153)
   (Aurora database cluster).
 
-- You do not need to set any opt-in or opt-out tags. As long as _you_, rather
-  than _AWS_, started your currently-running databases, Stay-Stopped won't
-  stop them.&sup1;
+- Before you start a database manually, wait until it has been stopped for
+  10 minutes.
 
 - <a name="design-idempotence"></a>Stopping stuff is inherently
-  idempotent: keep trying until it stops! This tool tries every 9 minutes
+  idempotent: keep trying until it stops! Stay-Stopped tries every 9 minutes
   until the database is stopped, an unexpected error occurs, or 24 hours pass.
 
   > Many alternatives (including AI-generated ones from Amazon Q Developer)
@@ -74,9 +74,6 @@ The design is simple but robust:
 
 - Once in a while it's still important to start a database before its
   maintenance window and leave it running until the window closes.
-
-&sup1; Before manually starting a database, wait until it has been stopped for
-at least 9 minutes.
 
 ### Detailed Diagram
 
@@ -418,8 +415,8 @@ The function might never get a chance to request that the database be stopped.
 
 > Waiting within the Lambda function might seem wasteful, but 15 minutes costs
 less than 2¢ &mdash; negligible for a function triggered once per database per
-week. Even though Lambda's maximum timeout is too short for this application,
-I appreciate the author's instinct for minimal infrastructure.
+week. Though Lambda's maximum timeout is too short for this application, I
+appreciate the author's instinct for minimal infrastructure.
 
 ### Step Function Alternative
 
@@ -511,11 +508,11 @@ a way to provoke retries, short of raising an exception or calling
 
 > If someone starts the database manually after it enters `stopped` status but
 before the next and final retry, Stay-Stopped will stop the database another
-time &mdash; a race condition, yes, but one that's documented and doesn't
-interfere with stopping stuff the first time! Before manually starting a
-database, wait until it has been `stopped` for at least 9 minutes (the tool's
-default [in]visibility timeout). Or, change `FollowUntilStopped` to `false` in
-CloudFormation.
+time &mdash; a race condition, yes, but documented, and not one that prevents
+the tool from doing its job of stopping databases! Before manually starting a
+database, wait until it has been stopped for 10 minutes (based on the tool's
+default [in]visibility timeout, 9 minutes). Or, change `FollowUntilStopped` to
+`false` in CloudFormation.
 
 ### Amazon Q Artificial Intelligence Solutions
 
