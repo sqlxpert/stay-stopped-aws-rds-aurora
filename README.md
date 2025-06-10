@@ -515,7 +515,7 @@ default [in]visibility timeout, 9 minutes). Or, change `FollowUntilStopped` to
 ### Amazon Q Artificial Intelligence Solutions
 
 After finishing Stay-Stopped, I decided to check whether
-[Amazon Q Developer](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-chat.html)
+[Amazon Q Developer](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/software-dev.html)
 might have helped with its development. This section is so dispiriting that
 I'm folding it. Read on, if you dare!
 
@@ -896,8 +896,15 @@ code that Amazon Q Developer generates. If you don't know general programming
 principles, you risk accepting generated code that is long, repetitive, and
 hard to maintain.
 
-I edited my prompts for brevity and reduced the indentation of the generated
-code excerpts for readability. Originals are available on request.
+> I have edited my prompts for brevity and reduced the indentation of the
+generated code excerpts for readability. Originals are available on request.
+Because the goal was to see whether artificial intelligence could develop a
+solution from scratch, replacing an experienced human developer or at least
+guiding a novice, I did not provide the Stay-Stopped code as context. "You can
+start an entirely new project...", according to the _Amazon Q User Guide_. I
+did not find attribution information while using Amazon Q Developer. If you
+claim credit for any part of the generated code and would like me to
+acknowledge your work, please get in touch.
 
 </details>
 
