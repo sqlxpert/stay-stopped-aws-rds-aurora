@@ -13,8 +13,8 @@ Use cases:
 - testing
 - development
 - infrequent reference
+- old databases kept just in case
 - vacation or leave beyond one week
-- retired databases kept just in case
 
 If it would cost too much to keep a database running but take too long to
 re-create it, this tool might save you money, time, or both. AWS does not
@@ -36,8 +36,6 @@ Jump to:
 ## Design
 
 [<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Relational Database Service or Aurora database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. Retry every 9 minutes for 24 hours, until the database status from Case 2 or 3 is 'stopped' or another final status." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for Stay Stopped, RDS and Aurora!")
-
-The design is simple but robust:
 
 - You do not need to set any opt-in or opt-out tags. If a database has been
   running continuously, it  will keep running. If it was stopped for 7 days,
@@ -110,7 +108,7 @@ Click to view the architecture diagram and flowchart:
     |DB instance started|DB cluster started|
     |DB instance is being started due to it exceeding the maximum allowed time being stopped.|DB cluster is being started due to it exceeding the maximum allowed time being stopped.|
 
-    > So much for a "quick" start! If you don't want to wait the 8 days, see
+    > If you don't want to wait 8 days, see
     [Testing](#testing),
     below.
 
@@ -533,8 +531,8 @@ Jump to:
 - [Waiting within the Lambda](#waiting-within-the-lambda)
 - ["Fixing" a Race Condition by Adding Another](#fixing-a-race-condition-by-adding-another)
 - [Spaghetti Code and Meatballs](#spaghetti-code-and-meatballs)
-- [Still Fixated on Tags](#still-fixated-on-tags)
-- [Amazon Q Developer Did Not Help](#amazon-q-developer-did-not-help)
+- [More Unnecessary Code](#more-unnecessary-code)
+- [Would Amazon Q Developer Have Helped?](#would-amazon-q-developer-have-helped)
 
 Amazon Q Developer's initial response to my prompt to write a Lambda function
 that keeps RDS databases stopped longer than 7 days didn't handle events at
@@ -789,27 +787,42 @@ a `stop_db_instance` call bracketed by "Stopping RDS instance" and
     }
 ```
 
-#### Still Fixated on Tags
+#### More Unnecessary Code
 
 When the goal is to stop databases that had already been stopped for 7 days,
 tags cannot add any information. A previously stopped database is included,
-thanks to `RDS-EVENT-0154`. A running database is excluded, because no event
-is generated for it. The only benefit of tags would be
+thanks to `RDS-EVENT-0154`. A continuously running database is excluded,
+because no event is generated for it. (The only benefit of tags would be
 [attribute-based access control](https://aws.amazon.com/identity/attribute-based-access-control/),
 which is far beyond the level of solutions typically found on the Internet or
 initially proposed by Amazon Q Developer.
 [github.com/sqlxpert/lights-off-aws uses ABAC](https://github.com/sqlxpert/lights-off-aws/blob/8e45026/cloudformation/lights_off_aws.yaml#L679-L687).
 To implement ABAC for Stay-Stopped, you can write a customer-managed IAM
 policy and set `LambdaFnRoleAttachLocalPolicyName`. Unless you restrict the
-right to add, change and delete tags, it's moot.
+right to add, change and delete tags, it's moot.)
 
 According to Amazon Q Developer, "The final solution represents a robust,
 production-ready approach that properly handles the complexities of keeping
 RDS instances stopped even after AWS automatically restarts them." The term
 "final solution" is sensitive and should never be used by a code generation
-bot. The final _version_ still included:
+bot. Isn't awareness of context part of intelligence? In any case, the final
+_version_ still included:
 
 ```python
+EXCLUDE_TAGS = os.environ.get('EXCLUDE_TAGS', 'AutoStop=false').split(',')
+# [...]
+def should_exclude(tags):
+    """Check if instance should be excluded based on tags"""
+    for tag_filter in EXCLUDE_TAGS:
+        if '=' in tag_filter:
+            key, value = tag_filter.split('=')
+            tag_value = get_tag_value(tags, key)
+            if tag_value and tag_value.lower() == value.lower():
+                return True
+    return False
+
+# [...]
+
   # Get instance details to check tags
   response = rds.describe_db_instances(DBInstanceIdentifier=source_id)
   # [...]
@@ -819,9 +832,26 @@ bot. The final _version_ still included:
   tags = instance.get('TagList', [])
   
   # Check if instance should be excluded based on tags
+  if should_exclude(tags):
+    # [...]
 ```
 
-Here is an `RDS-EVENT-0154` logged during the testing of Stay-Stopped:
+An `RDS-EVENT-0154` follows. I logged it while testing Stay-Stopped. The
+EventBridge to SQS to Lambda architecture affords not one but **two zero-code,
+zero-effort opportunities** to filter based on event properties, so long as
+the criteria are static. Instead of excluding databases tagged
+`AutoStop=false` declaratively, by adding one line of CloudFormation YAML to
+the existing
+[Events::Rule EventPattern](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-events-rule.html#cfn-events-rule-eventpattern),
+or a few lines to a new
+[Lambda::EventSourceMapping FilterCriteria](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-lambda-eventsourcemapping.html#cfn-lambda-eventsourcemapping-filtercriteria)
+entry, Amazon Q Developer proceeded imperatively, adding an environment
+variable, a function, and a `describe_db_instances` call, comprising 14+ extra
+lines of executable Python code. My earlier complaint that
+`describe_db_instances` does indeed return tags seems to have biased the bot
+against `list_tags_for_resource`, which would be appropriate this time &mdash;
+_if_ it were necessary to fetch tags and if tags made sense for this
+application.
 
 ```json
 {
@@ -852,20 +882,22 @@ Here is an `RDS-EVENT-0154` logged during the testing of Stay-Stopped:
 }
 ```
 
-Why fetch tags separately when they are already present in the event?
+#### Would Amazon Q Developer Have Helped?
 
-#### Amazon Q Developer Did Not Help
-
-After multiple revision rounds in which _I_ told Amazon Q Developer about
+No. After multiple revision rounds in which _I_ told Amazon Q Developer about
 problems and solutions it should have anticipated based on AWS's own
-documentation, the bot's lack of depth was clear. It helped with the _form_ of
-resource definitions, but not with correct _content_. If you don't know the
-extent of the documentation for the AWS services you use, and haven't read it
-yourself, you will not be able to assess the accuracy of Amazon Q Developer's
-claims. If you don't know distributed systems programming practices, you will
-not be able to assess the reliability of the code that Amazon Q Developer
-generates. If you don't know general programming principles, you risk
-accepting generated code that is long, repetitive, and hard to maintain.
+documentation, the bot's lack of depth was clear. It could have helped with
+the _form_ of resource definitions, but not with correct _content_. If you
+don't know the extent of the documentation for the AWS services you use, and
+haven't read it yourself, you will not be able to assess the accuracy of
+Amazon Q Developer's claims. If you don't know distributed systems
+programming practices, you will not be able to assess the reliability of the
+code that Amazon Q Developer generates. If you don't know general programming
+principles, you risk accepting generated code that is long, repetitive, and
+hard to maintain.
+
+I edited my prompts for brevity and reduced the indentation of the generated
+code excerpts for readability. Originals are available on request.
 
 </details>
 
