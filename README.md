@@ -1,6 +1,6 @@
 # Stay Stopped, RDS and Aurora!
 
-Reliably keep AWS databases stopped when not needed, to save money
+_Reliably keep AWS databases stopped when not needed, to save money_
 
 ## Purpose
 
@@ -13,8 +13,8 @@ Use cases:
 - testing
 - development
 - infrequent reference
+- old databases kept just in case
 - vacation or leave beyond one week
-- retired databases kept just in case
 
 If it would cost too much to keep a database running but take too long to
 re-create it, this tool might save you money, time, or both. AWS does not
@@ -37,22 +37,20 @@ Jump to:
 
 [<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Relational Database Service or Aurora database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. Retry every 9 minutes for 24 hours, until the database status from Case 2 or 3 is 'stopped' or another final status." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for Stay Stopped, RDS and Aurora!")
 
-The design is simple but robust:
-
-- This tool only stops databases that _AWS_ is starting after they've been
-  stopped for 7 days:
+- You do not need to set any opt-in or opt-out tags. If a database has been
+  running continuously, it  will keep running. If it was stopped for 7 days,
+  Stay-Stopped will stop it again. The tool responds to
   [RDS-EVENT-0154](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0154)
   (RDS database instance)
   and
   [RDS-EVENT-0153](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0153)
   (Aurora database cluster).
 
-- You do not need to set any opt-in or opt-out tags. As long as _you_, rather
-  than _AWS_, started your currently-running databases, Stay-Stopped won't
-  stop them.&sup1;
+- Before you start a database manually, wait until it has been stopped for
+  10 minutes.
 
 - <a name="design-idempotence"></a>Stopping stuff is inherently
-  idempotent: keep trying until it stops! This tool tries every 9 minutes
+  idempotent: keep trying until it stops! Stay-Stopped tries every 9 minutes
   until the database is stopped, an unexpected error occurs, or 24 hours pass.
 
   > Many alternatives (including AI-generated ones from Amazon Q Developer)
@@ -74,9 +72,6 @@ The design is simple but robust:
 
 - Once in a while it's still important to start a database before its
   maintenance window and leave it running until the window closes.
-
-&sup1; Before manually starting a database, wait until it has been stopped for
-at least 9 minutes.
 
 ### Detailed Diagram
 
@@ -105,7 +100,7 @@ Click to view the architecture diagram and flowchart:
     database cluster name, open the "Logs & events" tab and scroll to "Recent
     events". At the right, click to change "Last 1 day" to "Last 2 weeks". The
     "System notes" column should include the following entries, listed here
-    from newest to oldest:
+    from newest to oldest. There might be other entries in between.
 
     |RDS|Aurora|
     |:---|:---|
@@ -113,9 +108,7 @@ Click to view the architecture diagram and flowchart:
     |DB instance started|DB cluster started|
     |DB instance is being started due to it exceeding the maximum allowed time being stopped.|DB cluster is being started due to it exceeding the maximum allowed time being stopped.|
 
-    > Recovery, restart, and other events may appear in between.
-
-    > So much for a "quick" start! If you don't want to wait the 8 days, see
+    > If you don't want to wait 8 days, see
     [Testing](#testing),
     below.
 
@@ -251,15 +244,12 @@ Check the:
 
  2. `StayStoppedRdsAurora-ErrorQueue` (dead letter)
     [SQS queue](https://console.aws.amazon.com/sqs/v3/home#/queues)
-    - The presence of a message in this queue means that Stay-Stopped did not
-      stop a database, usually after trying for 24 hours.
+    - A message in this queue means that Stay-Stopped did not stop a database,
+      usually after trying for 24 hours.
     - The message will usually be the original EventBridge event from when AWS
       started the database after it had been stopped for 7 days.
-    - Different message types are possible in rare cases, such as if critical
-      Stay-Stopped components have been modified or deleted, or the local
-      security configuration denies EventBridge permission to send an event
-      message to the main SQS queue or denies SQS permission to invoke the AWS
-      Lambda function.
+    - Rarely, a message in this queue indicates that the local security
+      configuration is denying necessary access to SQS or Lambda.
 
  3. [CloudTrail Event history](https://console.aws.amazon.com/cloudtrailv2/home?ReadOnly=false/events#/events?ReadOnly=false)
     - CloudTrail events with an "Error code" may indicate permissions
@@ -401,15 +391,15 @@ catch the database while it's `available`, or not waiting long enough.
   <summary>About idempotence, race conditions, and latent bugs...</summary>
 
 <br/>
-Let's compare two alternative solutions, described as of May, 2025, then
-Stay-Stopped, and finally, a series of AI-generated solution from June,
+Let's compare two thoughtful alternative solutions, described as of May, 2025,
+then Stay-Stopped, and finally, a series of AI-generated solution from June,
 2025...
 
 ### Pure Lambda Alternative
 
 [Stop Amazon RDS/Aurora Whenever They Start](https://aws.plainenglish.io/stop-amazon-rds-aurora-whenever-they-start-with-lambda-and-eventbridge-c8c1a88f67d6)
 \[[code](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f)\]
-by shimo, from the _AWS In Plain English_ blog on Medium, comprises a single
+by shimo, from the _AWS in Plain English_ blog on Medium, comprises a single
 Lambda function, which checks that the database is `available` before stopping
 it
 ([L48-L51](https://gist.github.com/shimo164/cc9bb3c425e13f0f2fa14f29c633aa84/0e714a830352e6e6d29904e0629b82df5473393f#file-lambda_stop_rds-py-L48-L51)).
@@ -420,15 +410,13 @@ and checks again
 What if the database takes a long time to start? Startup "can take minutes to
 hours", according to the
 [RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StartInstance.html).
-What if the database goes from `available` to `maintenance` or another similar
-status, _before_ the next status check?
 [Lambda has a 15-minute maximum timeout](https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html).
 The function might never get a chance to request that the database be stopped.
 
 > Waiting within the Lambda function might seem wasteful, but 15 minutes costs
 less than 2¢ &mdash; negligible for a function triggered once per database per
-week. Even though Lambda's maximum timeout is too short for this application,
-I appreciate the author's instinct for minimal infrastructure.
+week. Though Lambda's maximum timeout is too short for this application, I
+appreciate the author's instinct for minimal infrastructure.
 
 ### Step Function Alternative
 
@@ -439,8 +427,8 @@ Before attempting to stop the database, the state machine waits as long as
 necessary for the database to become `available`; long `maintenance` etc.
 would be accommodated. After the database finishes `starting` and becomes
 `available`, what if someone notices and stops it manually, putting it in
-`stopping` status? Barring an error, `available` is the _only_ way out of the
-status check loop
+`stopping` status before the next status check? Barring an error, `available`
+is the _only_ way out of the status check loop
 ([stop-rds-instance-state-machine.json L30-L40](https://github.com/aws-samples/amazon-rds-auto-restart-protection/blob/cfdd3a1/sources/stepfunctions-code/stop-rds-instance-state-machine.json#L30-L40)).
 No
 [state machine timeout](https://docs.aws.amazon.com/step-functions/latest/dg/statemachine-structure.html#statemachinetimeoutseconds)
@@ -520,16 +508,16 @@ a way to provoke retries, short of raising an exception or calling
 
 > If someone starts the database manually after it enters `stopped` status but
 before the next and final retry, Stay-Stopped will stop the database another
-time &mdash; a race condition, yes, but one that's documented and doesn't
-interfere with stopping stuff the first time! Before manually starting a
-database, wait until it has been `stopped` for at least 9 minutes (the tool's
-default [in]visibility timeout). Or, change `FollowUntilStopped` to `false` in
-CloudFormation.
+time &mdash; a race condition, yes, but documented, and not one that prevents
+the tool from doing its job of stopping databases! Before manually starting a
+database, wait until it has been stopped for 10 minutes (based on the tool's
+default [in]visibility timeout, 9 minutes). Or, change `FollowUntilStopped` to
+`false` in CloudFormation.
 
 ### Amazon Q Artificial Intelligence Solutions
 
 After finishing Stay-Stopped, I decided to check whether
-[Amazon Q Developer](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-chat.html)
+[Amazon Q Developer](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/software-dev.html)
 might have helped with its development. This section is so dispiriting that
 I'm folding it. Read on, if you dare!
 
@@ -545,14 +533,14 @@ Jump to:
 - [Waiting within the Lambda](#waiting-within-the-lambda)
 - ["Fixing" a Race Condition by Adding Another](#fixing-a-race-condition-by-adding-another)
 - [Spaghetti Code and Meatballs](#spaghetti-code-and-meatballs)
-- [Still Fixated on Tags](#still-fixated-on-tags)
-- [Amazon Q Developer Did Not Help](#amazon-q-developer-did-not-help)
+- [More Unnecessary Code](#more-unnecessary-code)
+- [Would Amazon Q Developer Have Helped?](#would-amazon-q-developer-have-helped)
 
 Amazon Q Developer's initial response to my prompt to write a Lambda function
 that keeps RDS databases stopped longer than 7 days didn't handle events at
 all. It drew a list of databases from `describe_db_instances` and called
-`stop_db_instance` on any `available` ones that had been created more than 7
-days ago &mdash; disaster, even in non-production environments!
+`stop_db_instance` on `available` ones that had been created more than 7 days
+ago &mdash; disaster!
 
 #### An Unnecessary Call for Every Database
 
@@ -801,27 +789,42 @@ a `stop_db_instance` call bracketed by "Stopping RDS instance" and
     }
 ```
 
-#### Still Fixated on Tags
+#### More Unnecessary Code
 
 When the goal is to stop databases that had already been stopped for 7 days,
 tags cannot add any information. A previously stopped database is included,
-thanks to `RDS-EVENT-0154`. A running database is excluded, because no event
-is generated for it. The only benefit of tags would be
+thanks to `RDS-EVENT-0154`. A continuously running database is excluded,
+because no event is generated for it. (The only benefit of tags would be
 [attribute-based access control](https://aws.amazon.com/identity/attribute-based-access-control/),
 which is far beyond the level of solutions typically found on the Internet or
 initially proposed by Amazon Q Developer.
 [github.com/sqlxpert/lights-off-aws uses ABAC](https://github.com/sqlxpert/lights-off-aws/blob/8e45026/cloudformation/lights_off_aws.yaml#L679-L687).
 To implement ABAC for Stay-Stopped, you can write a customer-managed IAM
 policy and set `LambdaFnRoleAttachLocalPolicyName`. Unless you restrict the
-right to add, change and delete tags, it's moot.
+right to add, change and delete tags, it's moot.)
 
 According to Amazon Q Developer, "The final solution represents a robust,
 production-ready approach that properly handles the complexities of keeping
 RDS instances stopped even after AWS automatically restarts them." The term
 "final solution" is sensitive and should never be used by a code generation
-bot. The final _version_ still included:
+bot. Isn't awareness of context part of intelligence? In any case, the final
+_version_ still included:
 
 ```python
+EXCLUDE_TAGS = os.environ.get('EXCLUDE_TAGS', 'AutoStop=false').split(',')
+# [...]
+def should_exclude(tags):
+    """Check if instance should be excluded based on tags"""
+    for tag_filter in EXCLUDE_TAGS:
+        if '=' in tag_filter:
+            key, value = tag_filter.split('=')
+            tag_value = get_tag_value(tags, key)
+            if tag_value and tag_value.lower() == value.lower():
+                return True
+    return False
+
+# [...]
+
   # Get instance details to check tags
   response = rds.describe_db_instances(DBInstanceIdentifier=source_id)
   # [...]
@@ -831,9 +834,26 @@ bot. The final _version_ still included:
   tags = instance.get('TagList', [])
   
   # Check if instance should be excluded based on tags
+  if should_exclude(tags):
+    # [...]
 ```
 
-Here is an `RDS-EVENT-0154` logged during the testing of Stay-Stopped:
+An `RDS-EVENT-0154` follows. I logged it while testing Stay-Stopped. The
+EventBridge to SQS to Lambda architecture affords not one but **two zero-code,
+zero-effort opportunities** to filter based on event properties, so long as
+the criteria are static. Instead of excluding databases tagged
+`AutoStop=false` declaratively, by adding one line of CloudFormation YAML to
+the existing
+[Events::Rule EventPattern](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-events-rule.html#cfn-events-rule-eventpattern),
+or a few lines to a new
+[Lambda::EventSourceMapping FilterCriteria](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-lambda-eventsourcemapping.html#cfn-lambda-eventsourcemapping-filtercriteria)
+entry, Amazon Q Developer proceeded imperatively, adding an environment
+variable, a function, and a `describe_db_instances` call, comprising 14+ extra
+lines of executable Python code. My earlier complaint that
+`describe_db_instances` does indeed return tags seems to have biased the bot
+against `list_tags_for_resource`, which would be appropriate this time &mdash;
+if it were necessary to fetch tags and if tags made sense for this
+application.
 
 ```json
 {
@@ -864,20 +884,29 @@ Here is an `RDS-EVENT-0154` logged during the testing of Stay-Stopped:
 }
 ```
 
-Why fetch tags separately when they are already present in the event?
+#### Would Amazon Q Developer Have Helped?
 
-#### Amazon Q Developer Did Not Help
-
-After multiple revision rounds in which _I_ told Amazon Q Developer about
+No. After multiple revision rounds in which _I_ told Amazon Q Developer about
 problems and solutions it should have anticipated based on AWS's own
-documentation, the bot's lack of depth was clear. It helped with the _form_ of
-resource definitions, but not with correct _content_. If you don't know the
-extent of the documentation for the AWS services you use, and haven't read it
-yourself, you will not be able to assess the accuracy of Amazon Q Developer's
-claims. If you don't know distributed systems programming practices, you will
-not be able to assess the reliability of the code that Amazon Q Developer
-generates. If you don't know general programming principles, you risk
-accepting generated code that is long, repetitive, and hard to maintain.
+documentation, the bot's lack of depth was clear. It could have helped with
+the _form_ of resource definitions, but not with correct _content_. If you
+don't know the extent of the documentation for the AWS services you use, and
+haven't read it yourself, you will not be able to assess the accuracy of
+Amazon Q Developer's claims. If you don't know distributed systems
+programming practices, you will not be able to assess the reliability of the
+code that Amazon Q Developer generates. If you don't know general programming
+principles, you risk accepting generated code that is long, repetitive, and
+hard to maintain.
+
+> I have edited my prompts for brevity and reduced the indentation of the
+generated code excerpts for readability. Originals are available on request.
+Because the goal was to see whether artificial intelligence could develop a
+solution from scratch, replacing an experienced human developer or at least
+guiding a novice, I did not provide the Stay-Stopped code as context. "You can
+start an entirely new project...", according to the _Amazon Q User Guide_. I
+did not find attribution information while using Amazon Q Developer. If you
+claim credit for any part of the generated code and would like me to
+acknowledge your work, please get in touch.
 
 </details>
 
