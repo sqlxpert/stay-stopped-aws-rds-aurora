@@ -389,8 +389,8 @@ catch the database while it's `available`, or not waiting long enough.
   <summary>About idempotence, race conditions, and latent bugs...</summary>
 
 <br/>
-Let's compare two alternative solutions, described as of May, 2025, then
-Stay-Stopped, and finally, a series of AI-generated solution from June,
+Let's compare two thoughtful alternative solutions, described as of May, 2025,
+then Stay-Stopped, and finally, a series of AI-generated solution from June,
 2025...
 
 ### Pure Lambda Alternative
