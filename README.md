@@ -321,10 +321,10 @@ messages" button above the list. You can:
 - "Poll for messages", select a message, read it and delete it, or
 - "Purge" all messages.
 
-Edit the date/time strings (ending in `Z` for
-[UTC](https://www.timeanddate.com/worldclock/timezone/utc);
-must be within the past `QueueMaxReceiveCount` &times;
-`QueueVisibilityTimeoutSecs`) and database names in these test messages:
+Edit the database names and date/time strings (must be within the past
+`QueueMaxReceiveCount` &times; `QueueVisibilityTimeoutSecs` and end in `Z` for
+[UTC](https://www.timeanddate.com/worldclock/timezone/utc))
+in these test messages:
 
 ```json
 {
@@ -359,10 +359,11 @@ must be within the past `QueueMaxReceiveCount` &times;
 Depending on locally-determined permissions, you may also be able to invoke
 the
 [StayStopped Lambda function](https://console.aws.amazon.com/lambda/home#/functions?fo=and&o0=%3A&v0=StayStoppedRdsAurora-LambdaFn-)
-manually. Edit the date/time strings (ending in `Z` for
-[UTC](https://www.timeanddate.com/worldclock/timezone/utc);
-must be within the past `QueueMaxReceiveCount` &times;
-`QueueVisibilityTimeoutSecs`) and database names in this Lambda test event:
+manually. Edit the database names and date/time strings (must be within the
+past `QueueMaxReceiveCount` &times; `QueueVisibilityTimeoutSecs` and end in `Z`
+for
+[UTC](https://www.timeanddate.com/worldclock/timezone/utc))
+in this Lambda test event:
 
 ```json
 {
