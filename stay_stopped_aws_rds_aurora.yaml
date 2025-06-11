@@ -701,8 +701,10 @@ Resources:
       MaximumMessageSize: !Ref QueueMessageBytesMax
 
       MessageRetentionPeriod: !Ref ErrorQueueMessageRetentionPeriodSecs
-      # Messages will be processed and deleted, or be moved to error (dead
-      # letter) queue by QueueMaxReceiveCount * QueueVisibilityTimeoutSecs
+      # Well before, messages will have been processed or deemed expired --
+      # search "expired(" -- by LambdaFn code, and deleted; or moved to the
+      # error (dead letter) queue after QueueMaxReceiveCount tries
+      # (time: QueueMaxReceiveCount * QueueVisibilityTimeoutSecs).
 
       ReceiveMessageWaitTimeSeconds: 20  # long polling (lowest cost)
       VisibilityTimeout: !Ref QueueVisibilityTimeoutSecs
