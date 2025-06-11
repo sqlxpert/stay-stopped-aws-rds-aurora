@@ -17,10 +17,11 @@ logger = logging_getLogger()
 # Skip "credentials in environment" INFO message, unavoidable in AWS Lambda:
 logging_getLogger("botocore").setLevel(WARNING)
 
+EXPIRES_TIMEDELTA = timedelta(seconds=(
+  int(os_environ["MAX_RECEIVE_COUNT"])
+  * int(os_environ["VISIBILITY_TIMEOUT_SECS"])
+))
 FOLLOW_UNTIL_STOPPED = ("FOLLOW_UNTIL_STOPPED" in os_environ)  # pylint: disable=superfluous-parens
-EXPIRES_TIMEDELTA = timedelta(
-  seconds=int(os_environ["EXPIRES_AFTER_SECONDS"])
-)
 
 
 def log(entry_type, entry_value, log_level):
@@ -323,9 +324,8 @@ def expired(event_datetime_str):
 
   A safeguard in case messages accumulate while Lambda concurrency is at the
   limit. Cannot be achieved by reducing MessageRetentionPeriod in
-  CloudFormation to EXPIRES_AFTER_SECONDS, because no record would be kept.
-  (After the retention period, SQS deletes messages instead of moving them to
-  the dead letter queue.)
+  CloudFormation, because no record would be kept. (After the retention period,
+  SQS deletes messages instead of moving them to the dead letter queue.)
   """
   event_datetime_oldest = datetime.now(UTC) - EXPIRES_TIMEDELTA
   event_datetime = datetime.fromisoformat(event_datetime_str)
