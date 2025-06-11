@@ -4,19 +4,23 @@
 github.com/sqlxpert/stay-stopped-aws-rds-aurora  GPLv3  Copyright Paul Marcelin
 """
 
-from logging import getLogger, INFO, WARNING, ERROR
+from logging import getLogger as logging_getLogger, INFO, WARNING, ERROR
 from os import environ as os_environ
 from json import dumps as json_dumps, loads as json_loads
+from datetime import datetime, timedelta, UTC
 from re import match as re_match
 from botocore.exceptions import ClientError as botocore_ClientError
 from botocore.config import Config as botocore_Config
 from boto3 import client as boto3_client
 
-logger = getLogger()
+logger = logging_getLogger()
 # Skip "credentials in environment" INFO message, unavoidable in AWS Lambda:
-getLogger("botocore").setLevel(WARNING)
+logging_getLogger("botocore").setLevel(WARNING)
 
 FOLLOW_UNTIL_STOPPED = ("FOLLOW_UNTIL_STOPPED" in os_environ)  # pylint: disable=superfluous-parens
+EXPIRES_TIMEDELTA = timedelta(
+  seconds=int(os_environ["EXPIRES_AFTER_SECONDS"])
+)
 
 
 def log(entry_type, entry_value, log_level):
@@ -125,6 +129,7 @@ def assess_db_status(db_status):
 
       case (
           "starting"  # Stop not yet successfully requested
+        | "available"  # Not expected after stop_db_instance/stop_db_cluster
         | "backing-up"
         | "maintenance"
         | "modifying"
@@ -154,8 +159,7 @@ def assess_db_status(db_status):
         # Status will probably change
 
       case (
-          "available"  # Not expected after stop_db_instance/stop_db_cluster
-        | "inaccessible-encryption-credentials-recoverable"
+          "inaccessible-encryption-credentials-recoverable"
         # RDS database instance only:
         | "incompatible-network"
         | "incompatible-option-group"
@@ -314,6 +318,20 @@ def op_log(  # pylint: disable=too-many-arguments,too-many-positional-arguments
   )
 
 
+def expired(event_datetime_str):
+  """Take an ISO 8601 string, return True if older than EXPIRES_TIMEDELTA
+
+  A safeguard in case messages accumulate while Lambda concurrency is at the
+  limit. Cannot be achieved by reducing MessageRetentionPeriod in
+  CloudFormation to EXPIRES_AFTER_SECONDS, because no record would be kept.
+  (After the retention period, SQS deletes messages instead of moving them to
+  the dead letter queue.)
+  """
+  event_datetime_oldest = datetime.now(UTC) - EXPIRES_TIMEDELTA
+  event_datetime = datetime.fromisoformat(event_datetime_str)
+  return (event_datetime < event_datetime_oldest)  # pylint: disable=superfluous-parens
+
+
 def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
   """Try to request stopping Aurora database clusters, RDS database instances
 
@@ -350,6 +368,10 @@ def lambda_handler(lambda_event, context):  # pylint: disable=unused-argument
       sqs_message_id = sqs_message["messageId"]
       db_event = json_loads(sqs_message["body"])
       db_event_detail = db_event["detail"]
+
+      if expired(db_event_detail["Date"]):
+        raise RuntimeError("Event expired")
+
       # Events have "CLUSTER" (Aurora) or "DB_INSTANCE" (RDS); take last word:
       source_type_word = db_event_detail["SourceType"].split("_")[-1]
       source_identifier = db_event_detail["SourceIdentifier"]

@@ -184,6 +184,9 @@ entirely at your own risk. You are encouraged to review the source code.
 
 - A concurrency limit, to prevent exhaustion of available Lambda resources.
 
+- A 24-hour event date/time expiry check, to prevent processing of accumulated
+  stale events, if any.
+
 - Readable Identity and Access Management policies, formatted as
   CloudFormation YAML rather than JSON, and broken down into discrete
   statements by service, resource or principal.
@@ -318,12 +321,16 @@ messages" button above the list. You can:
 - "Poll for messages", select a message, read it and delete it, or
 - "Purge" all messages.
 
-Edit the database names in these test messages:
+Edit the date/time strings (ending in `Z` for
+[UTC](https://www.timeanddate.com/worldclock/timezone/utc),
+and must be within the past 24 hours) and database names in these test
+messages:
 
 ```json
 {
   "detail": {
     "SourceIdentifier": "Name-Of-Your-RDS-Database-Instance",
+    "Date": "2025-06-06T04:30Z",
     "SourceType": "DB_INSTANCE",
     "EventID": "RDS-EVENT-0154"
   },
@@ -337,6 +344,7 @@ Edit the database names in these test messages:
 {
   "detail": {
     "SourceIdentifier": "Name-Of-Your-Aurora-Database-Cluster",
+    "Date": "2025-06-06T04:30Z",
     "SourceType": "CLUSTER",
     "EventID": "RDS-EVENT-0153"
   },
@@ -351,17 +359,20 @@ Edit the database names in these test messages:
 Depending on locally-determined permissions, you may also be able to invoke
 the
 [StayStopped Lambda function](https://console.aws.amazon.com/lambda/home#/functions?fo=and&o0=%3A&v0=StayStoppedRdsAurora-LambdaFn-)
-manually. Edit the database names in this Lambda test event:
+manually. Edit the date/time strings (ending in `Z` for
+[UTC](https://www.timeanddate.com/worldclock/timezone/utc),
+and must be within the past 24 hours) and database names in this Lambda test
+event:
 
 ```json
 {
   "Records": [
     {
-      "body": "{ \"detail\": { \"SourceIdentifier\": \"Name-Of-Your-RDS-Database-Instance\", \"SourceType\": \"DB_INSTANCE\", \"EventID\": \"RDS-EVENT-0154\" }, \"detail-type\": \"RDS DB Instance Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
+      "body": "{ \"detail\": { \"SourceIdentifier\": \"Name-Of-Your-RDS-Database-Instance\", \"Date\": \"2025-06-06T04:30Z\", \"SourceType\": \"DB_INSTANCE\", \"EventID\": \"RDS-EVENT-0154\" }, \"detail-type\": \"RDS DB Instance Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
       "messageId": "test-message-1-rds"
     },
     {
-      "body": "{ \"detail\": { \"SourceIdentifier\": \"Name-Of-Your-Aurora-Database-Cluster\", \"SourceType\": \"CLUSTER\", \"EventID\": \"RDS-EVENT-0153\" }, \"detail-type\": \"RDS DB Cluster Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
+      "body": "{ \"detail\": { \"SourceIdentifier\": \"Name-Of-Your-Aurora-Database-Cluster\", \"Date\": \"2025-06-06T04:30Z\", \"SourceType\": \"CLUSTER\", \"EventID\": \"RDS-EVENT-0153\" }, \"detail-type\": \"RDS DB Cluster Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
       "messageId": "test-message-2-aurora"
     }
   ]
