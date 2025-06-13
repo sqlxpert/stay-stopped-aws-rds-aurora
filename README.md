@@ -154,7 +154,7 @@ and/or AWS accounts. See
 
 ## Security
 
-> In accordance with the software license, nothing in this section establishes
+> In accordance with the software license, nothing in this document establishes
 indemnification, a warranty, assumption of liability, etc. Use this software
 entirely at your own risk. You are encouraged to review the source code.
 
@@ -404,7 +404,7 @@ catch the database while it's `available`, or not waiting long enough.
 
 <br/>
 Let's compare two thoughtful alternative solutions, described as of May, 2025,
-then Stay-Stopped, and finally, a series of AI-generated solution from June,
+then Stay-Stopped, and finally, a series of AI-generated solutions from June,
 2025...
 
 ### Pure Lambda Alternative
@@ -545,7 +545,8 @@ Jump to:
 - [Waiting within the Lambda](#waiting-within-the-lambda)
 - ["Fixing" a Race Condition by Adding Another](#fixing-a-race-condition-by-adding-another)
 - [Spaghetti Code and Meatballs](#spaghetti-code-and-meatballs)
-- [More Unnecessary Code](#more-unnecessary-code)
+- [Still Unnecessary Code](#still-unnecessary-code)
+- [Leaving a Bug for Later](#leaving-a-bug-for-later)
 - [Would Amazon Q Developer Have Helped?](#would-amazon-q-developer-have-helped)
 
 Amazon Q Developer's initial response to my prompt to write a Lambda function
@@ -801,7 +802,7 @@ a `stop_db_instance` call bracketed by "Stopping RDS instance" and
     }
 ```
 
-#### More Unnecessary Code
+#### Still Unnecessary Code
 
 When the goal is to stop databases that had already been stopped for 7 days,
 tags cannot add any information. A previously stopped database is included,
@@ -812,8 +813,8 @@ which is far beyond the level of solutions typically found on the Internet or
 initially proposed by Amazon Q Developer.
 [github.com/sqlxpert/lights-off-aws uses ABAC](https://github.com/sqlxpert/lights-off-aws/blob/8e45026/cloudformation/lights_off_aws.yaml#L679-L687).
 To implement ABAC for Stay-Stopped, you can write a customer-managed IAM
-policy and set `LambdaFnRoleAttachLocalPolicyName`. Unless you restrict the
-right to add, change and delete tags, it's moot.)
+policy and set `LambdaFnRoleAttachLocalPolicyName`. Unless you universally
+restrict the right to add, change and delete ABAC tags, the policy is moot.)
 
 According to Amazon Q Developer, "The final solution represents a robust,
 production-ready approach that properly handles the complexities of keeping
@@ -895,6 +896,56 @@ application.
   }
 }
 ```
+
+#### Leaving a Bug for Later
+
+One thing I liked about the generated code at first glance was the encoding
+scheme for a list of tag=value pairs &mdash; even though, as explained above,
+tags are a distraction in this application.
+
+```python
+EXCLUDE_TAGS = os.environ.get('EXCLUDE_TAGS', 'AutoStop=false').split(',')
+# [...]
+  key, value = tag_filter.split('=')
+```
+
+Unlike the rest of the generated code, this encoding is syntactically economic,
+both for the user and for the programmer. Unfortunately, the choice of `=` as
+a delimiter hides a bug and demonstrates that Amazon Q Developer is ignoring
+AWS documentation that was available during training and is germane and
+queryable at this moment. This prompt was all about RDS. Tag restrictions
+differ from one AWS service to another, and the restrictions are not
+documented for all services. RDS tag keys and values have rather limited
+character sets, which are documented in
+[Tagging Amazon RDS resources: Tag structure in Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Tagging.html#Overview.Tagging.Structure),
+in the _RDS User Guide_. `=` is allowed in RDS tag keys, where it wouldn't make
+much sense to humans, and in RDS tag values, where it does make sense. My
+other project,
+[github.com/sqlxpert/lights-off-aws](https://github.com/sqlxpert/lights-off-aws#single-terms)&nbsp;,
+processes schedule expressions in tag values. For clarity to the user as well
+as to the programmer, I replaced `cron`'s positional system with label=value
+pairs, the labels being
+[strftime](https://manpages.ubuntu.com/manpages/noble/man3/strftime.3.html#description)
+fields. `=` can also appear in the query part of a URI. Tagging AWS resources
+with URIs pointing to dashboards, documentation or tickets is a good practice.
+
+There's no problem with the simple example shown here, but what would happen
+if this code entered a larger codebase and were reused in other contexts? `=`
+as a delimiter is incorrect for RDS because it's allowed inside RDS tag keys
+and tag values. `,` as a delimiter would also be incorrect for EC2, because
+it's allowed inside EC2 tag keys and tag values. See
+[Tag your Amazon EC2 resources: Tag restrictions](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions)
+in the _EC2 User Guide_.
+
+When I knowingly introduce code that circumscribes a documented capability, it
+is my responsibility to warn people. Amazon Q Developer loves comments, and
+this would be a good use for one, although generated comments are typically
+manipulations of tokens that speak to the "what", not to the "why". If Amazon
+Q Developer were able to preemptively insert a comment with a link to the RDS
+tag specification and a warning that `=` is not allowed in this application's
+tags, the bot would would save me time. Better yet, how about preventing
+future bugs by choosing a delimiter that is consistent with the rules in the
+service documentation?
 
 #### Would Amazon Q Developer Have Helped?
 
