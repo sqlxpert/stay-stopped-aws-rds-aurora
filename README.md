@@ -933,13 +933,12 @@ fields. `=` can also appear in the query part of a URI. Tagging AWS resources
 with links to dashboards, documentation or Jira tickets is a good practice.
 
 The simple `AutoStop=false` example works, but an unexpected error would occur
-if the user were aware of RDS's rules but not the application's, and included
-a tag key or value with `=` when setting `EXCLUDE_TAGS`. Down the road, if the
-generated `split`s entered a larger codebase and were reused in a broader
-context, debugging would become quite difficult. `=` as a delimiter is
-incorrect for RDS because it's allowed inside RDS tag keys and tag values. `,`
-as a delimiter would also be incorrect for EC2, because it's allowed inside
-EC2 tag keys and tag values. See
+if the user followed RDS's tag rules and included a tag key or value with `=`
+when setting `EXCLUDE_TAGS`. Looking ahead, if the generated `split`s entered
+a larger codebase and were reused in a broader context, debugging would become
+quite difficult. `=` as a delimiter is incorrect for RDS because it's allowed
+inside RDS tag keys and tag values. `,` as a delimiter would be incorrect for
+EC2, because it's allowed inside EC2 tag keys and tag values. See
 [Tag your Amazon EC2 resources: Tag restrictions](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions)
 in the _EC2 User Guide_.
 
@@ -950,7 +949,7 @@ generated comments are typically manipulations of tokens that speak to
 the "what", not to the "why". If Amazon Q Developer preemptively provided, in
 the parameter description and in a code comment, a link to the RDS tag
 specification and a warning that `=` is not allowed in tag keys or tag values
-for this application, the bot would would save me time. Better yet, how about
+for this application, the bot would save me time. Better yet, how about
 generating reusable code and preventing future bugs by choosing delimiters
 that are consistent with the rules in AWS service documentation?
 
