@@ -665,8 +665,8 @@ EventBridge rule
 
 Option 3 requires risky self-modifying infrastructure, and Option 4 is like a
 "distractor" response for a test question meant to distinguish system
-administration from DevOps. If a `cron` job is no longer right, why would a
-"Lambda that runs on a schedule" make sense?
+administration from DevOps. If a `cron` job is no longer right, why would
+running "a Lambda on a schedule" make sense?
 
 #### "Fixing" a Race Condition by Adding Another
 
@@ -685,8 +685,8 @@ stop the same instance
 prevent concurrent operations on the same instance
 ```
 
-Amazon Q Developer offered to "Double-check instance state before stopping",
-adding a second `describe_db_instances` call and a second race condition!
+Amazon Q Developer offered to add a second `describe_db_instances` call,
+unwittingly adding a second race condition!
 
 ```python
   try:
@@ -913,39 +913,46 @@ Unlike the rest of the generated code, this encoding is syntactically economic,
 both for the user and for the programmer. Unfortunately, the choice of `=` as
 a delimiter hides a bug and demonstrates that Amazon Q Developer is ignoring
 AWS documentation that was available during training and is germane and
-queryable at this moment. This prompt was all about RDS. Tag restrictions
-differ from one AWS service to another, and the restrictions are not
-documented for all services. RDS tag keys and values have rather limited
-character sets, which are documented in
+queryable now.
+
+Tag restrictions differ from one AWS service to another, and the restrictions
+are not documented for all services. RDS tag keys and values have rather
+limited character sets, which are documented in
 [Tagging Amazon RDS resources: Tag structure in Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Tagging.html#Overview.Tagging.Structure),
 in the _RDS User Guide_. `=` is allowed in RDS tag keys, where it wouldn't make
-much sense to humans, and in RDS tag values, where it does make sense. My
-other project,
+much sense to humans, and in RDS tag values, where it does make sense. The
+original prompt was all about RDS.
+
+My other project,
 [github.com/sqlxpert/lights-off-aws](https://github.com/sqlxpert/lights-off-aws#single-terms)&nbsp;,
-processes schedule expressions in tag values. For clarity to the user as well
+processes schedule expressions in tag _values_. For clarity to the user as well
 as to the programmer, I replaced `cron`'s positional system with label=value
-pairs, the labels being
+pairs like `d=01 H=07 M=30`, the labels corresponding to
 [strftime](https://manpages.ubuntu.com/manpages/noble/man3/strftime.3.html#description)
 fields. `=` can also appear in the query part of a URI. Tagging AWS resources
-with URIs pointing to dashboards, documentation or tickets is a good practice.
+with links to dashboards, documentation or Jira tickets is a good practice.
 
-There's no problem with the simple example shown here, but what would happen
-if this code entered a larger codebase and were reused in other contexts? `=`
-as a delimiter is incorrect for RDS because it's allowed inside RDS tag keys
-and tag values. `,` as a delimiter would also be incorrect for EC2, because
-it's allowed inside EC2 tag keys and tag values. See
+The simple `AutoStop=false` example works, but an unexpected error would occur
+if the user were aware of RDS's rules but not the application's, and included
+a tag key or value with `=` when setting `EXCLUDE_TAGS`. Down the road, if the
+generated `split`s entered a larger codebase and were reused in a broader
+context, debugging would become quite difficult. `=` as a delimiter is
+incorrect for RDS because it's allowed inside RDS tag keys and tag values. `,`
+as a delimiter would also be incorrect for EC2, because it's allowed inside
+EC2 tag keys and tag values. See
 [Tag your Amazon EC2 resources: Tag restrictions](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions)
 in the _EC2 User Guide_.
 
 When I knowingly introduce code that circumscribes a documented capability, it
-is my responsibility to warn people. Amazon Q Developer loves comments, and
-this would be a good use for one, although generated comments are typically
-manipulations of tokens that speak to the "what", not to the "why". If Amazon
-Q Developer were able to preemptively insert a comment with a link to the RDS
-tag specification and a warning that `=` is not allowed in this application's
-tags, the bot would would save me time. Better yet, how about preventing
-future bugs by choosing a delimiter that is consistent with the rules in the
-service documentation?
+is my responsibility to warn the user and the programmer. Amazon Q Developer
+loves to generate comments, and this would be a good use for one, although the
+generated comments are typically manipulations of tokens that speak to
+the "what", not to the "why". If Amazon Q Developer preemptively provided, in
+the parameter description and in a code comment, a link to the RDS tag
+specification and a warning that `=` is not allowed in tag keys or tag values
+for this application, the bot would would save me time. Better yet, how about
+generating reusable code and preventing future bugs by choosing delimiters
+that are consistent with the rules in AWS service documentation?
 
 #### Would Amazon Q Developer Have Helped?
 
@@ -965,9 +972,9 @@ hard to maintain.
 generated code excerpts for readability. Originals are available on request.
 Because the goal was to see whether artificial intelligence could develop a
 solution from scratch, replacing an experienced human developer or at least
-guiding a novice, I did not provide the Stay-Stopped code as context. "You can
-start an entirely new project...", according to the _Amazon Q User Guide_. I
-did not find attribution information while using Amazon Q Developer. If you
+orienting a novice, I did not provide the Stay-Stopped code as context. "You
+can start an entirely new project...", according to the _Amazon Q User Guide_.
+I did not find attribution information while using Amazon Q Developer. If you
 claim credit for any part of the generated code and would like me to
 acknowledge your work, please get in touch.
 
@@ -995,6 +1002,17 @@ from each other. Please get in touch with ideas for improving Stay-Stopped!
 [Return to the Design section](#design-idempotence)
 
 </details>
+
+## Acknowledgements
+
+Thank you to:
+
+- Andrew, who asked the question that led me to develop Stay-Stopped. User
+  feedback matters!
+- shimo and Islam Ghanim, developers who open-sourced alternative solutions.
+- Corey, who shared Stay-Stopped with the AWS user community in _Last Week in
+  AWS_ newsletter issue
+  427 (June 16, 2025).
 
 ## Licenses
 
