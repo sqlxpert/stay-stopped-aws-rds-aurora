@@ -89,7 +89,7 @@ Click to view the architecture diagram and flowchart:
     [CloudFormation stack](https://console.aws.amazon.com/cloudformation/home)
     "With new resources (standard)". Select "Upload a template file", then
     select "Choose file" and navigate to a locally-saved copy of
-    [stay_stopped_rds_aurora.yaml](/stay_stopped_aws_rds_aurora.yaml?raw=true)
+    [stay_stopped_aws_rds_aurora.yaml](/stay_stopped_aws_rds_aurora.yaml?raw=true)
     [right-click to save as...]. On the next page, set:
 
     - Stack name: `StayStoppedRdsAurora`
@@ -115,7 +115,7 @@ Click to view the architecture diagram and flowchart:
 ## Multi-Account, Multi-Region
 
 For reliability, Stay-Stopped works independently in each region, in each AWS
-account. To deploy in multiple regions and/or AWS accounts,
+account. To deploy in multiple regions and/or multiple AWS accounts,
 
  1. Delete any standalone `StayStoppedRdsAurora` CloudFormation _stacks_ in
     your target regions and/or AWS accounts.
@@ -128,7 +128,7 @@ account. To deploy in multiple regions and/or AWS accounts,
     [CloudFormation StackSet](https://console.aws.amazon.com/cloudformation/home#/stacksets).
     Select "Upload a template file", then select "Choose file" and upload a
     locally-saved copy of
-    [stay_stopped_rds_aurora.yaml](/stay_stopped_aws_rds_aurora.yaml?raw=true)
+    [stay_stopped_aws_rds_aurora.yaml](/stay_stopped_aws_rds_aurora.yaml?raw=true)
     [right-click to save as...]. On the next page, set:
 
     - StackSet name: `StayStoppedRdsAurora`
