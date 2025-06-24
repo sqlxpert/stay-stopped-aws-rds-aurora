@@ -35,6 +35,11 @@ Jump to:
 
 ## Design
 
+_[**NEW:**
+[github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora)
+is a<br/>
+low-code, Step Function-based implementation of the same algorithm.]_
+
 [<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Relational Database Service or Aurora database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. Retry every 9 minutes for 24 hours, until the database status from Case 2 or 3 is 'stopped' or another final status." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for Stay Stopped, RDS and Aurora!")
 
 - You do not need to set any opt-in or opt-out tags. If a database has been
@@ -457,6 +462,10 @@ from `stopping` to `stopped`.
 [<img src="media/aws-architecture-blog-stop-rds-instance-state-machine-annotated-thumb.png" alt="'Retrieve Relational Database Service Instance State', 'is Instance Available?', and 'wait Five Minutes' are joined in a loop. The only exit paths are from 'is Instance Available?' to 'stop RDS Instance', if 'RDS Instance State' is 'available'; or from 'retrieve RDS Instance State' and 'stop RDS Instance' to 'fall-back', if an error is caught." height="144" />](media/aws-architecture-blog-stop-rds-instance-state-machine-annotated.png?raw=true "Annotated state machine from the AWS Architecture Blog solution")
 
 ### Stay-Stopped: Queue Before Lambda
+
+_[ Note: The Step Function solution discussed above is not related to<br/>
+my own
+[github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora)&nbsp;.]_
 
 Stay-Stopped requires only one Lambda function, but inserts an SQS queue
 between EventBridge and Lambda. Waiting occurs outside the Lambda function.
