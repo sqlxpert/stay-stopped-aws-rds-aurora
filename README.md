@@ -8,7 +8,7 @@ You can keep an EC2 compute instance stopped as long as you want, but it's not
 possible to stop an RDS or Aurora database longer than 7 days. After AWS
 starts your database on the 7th day, this tool automatically stops it again.
 
-Use cases:
+### Use Cases
 
 - testing
 - development
@@ -35,12 +35,12 @@ Jump to:
 
 ## Design
 
-_[**NEW:**
+_[**NEW!**
 [github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora)
-is a<br/>
-low-code, Step Function-based implementation of the same algorithm.]_
+is a<wbr/>
+low-code, Step Function-based implementation of the same process.]_
 
-[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Relational Database Service or Aurora database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. Retry every 9 minutes for 24 hours, until the database status from Case 2 or 3 is 'stopped' or another final status." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Relational Database Service or Aurora database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. Exit if the database status from Case 2 or 3 is 'stopped' or another final status. Otherwise, retry every 9 minutes, for 24 hours." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for [Step-]Stay Stopped, RDS and Aurora!")
 
 - You do not need to set any opt-in or opt-out tags. If a database has been
   running continuously, it  will keep running. If it was stopped for 7 days,
@@ -291,8 +291,8 @@ these parameters in CloudFormation:
 |`QueueMaxReceiveCount`|`160`|`30`|
 |&rarr; _Equivalent time_|_24 hours_|_30 minutes_|
 
-Given the operational and security risks explained below, **&#9888; exit test
-mode as quickly as possible**. If your test database is ready, several minutes
+**&#9888; Exit test mode as quickly as possible**, given the operational and
+security risks explained below. If your test database is ready, several minutes
 should be sufficient.
 
 ### Test by Manually Starting a Database
@@ -463,7 +463,7 @@ from `stopping` to `stopped`.
 
 ### Stay-Stopped: Queue Before Lambda
 
-_[ Note: The Step Function solution discussed above is not related to<br/>
+_[ Note: The Step Function solution discussed above is not related to<wbr/>
 my own
 [github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora)&nbsp;.]_
 
