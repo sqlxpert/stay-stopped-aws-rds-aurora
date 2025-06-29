@@ -40,7 +40,7 @@ _[**NEW!**
 is a<wbr/>
 low-code, Step Function-based implementation of the same process.]_
 
-[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="Call to stop the Relational Database Service or Aurora database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. Exit if the database status from Case 2 or 3 is 'stopped' or another final status. Otherwise, retry every 9 minutes, for 24 hours." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for [Step-]Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="After waiting 9 minutes, call to stop the Relational Database Service or Aurora database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. Exit if the database status from Case 2 or 3 is 'stopped' or another final status. Otherwise, retry every 9 minutes, for 24 hours." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for [Step-]Stay Stopped, RDS and Aurora!")
 
 - You do not need to set any opt-in or opt-out tags. If a database has been
   running continuously, it  will keep running. If it was stopped for 7 days,
@@ -82,7 +82,7 @@ low-code, Step Function-based implementation of the same process.]_
 
 Click to view the architecture diagram and flowchart:
 
-[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow-thumb.png" alt="Relational Database Service Event Bridge events '0153' and '0154' (database started after exceeding 7-day maximum stop time) go to the main Simple Queue Service queue. The Amazon Web Services Lambda function stops the RDS instance or the Aurora cluster. If the database's status is invalid, the queue message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' ends retries, as does an error status. After 160 tries (24 hours), the message goes to the error (dead letter) SQS queue." height="144" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png?raw=true "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
+[<img src="media/stay-stopped-aws-rds-aurora-architecture-and-flow-thumb.png" alt="Relational Database Service Event Bridge events '0153' and '0154' (database started after exceeding 7-day maximum stop time) go to the main Simple Queue Service queue, where messages are initially delayed 9 minutes. The Amazon Web Services Lambda function stops the RDS instance or the Aurora cluster. If the database's status is invalid, the queue message becomes visible again in 9 minutes. A final status of 'stopping', 'deleting' or 'deleted' ends retries, as does an error status. After 160 tries (24 hours), the message goes to the error (dead letter) SQS queue." height="144" />](media/stay-stopped-aws-rds-aurora-architecture-and-flow.png?raw=true "Architecture diagram and flowchart for Stay Stopped, RDS and Aurora!")
 
 ## Get Started
 
@@ -286,8 +286,9 @@ these parameters in CloudFormation:
 |:---|:---:|:---:|
 |`Test`|`false`|`true`|
 |`LogLevel`|`ERROR`|`INFO`|
-|`QueueVisibilityTimeoutSecs`|`540`|`60`|
+|`QueueDelaySecs`|`540`|`60`|
 |&rarr; _Equivalent in minutes_|_9 minutes_|_1 minute_|
+|`QueueVisibilityTimeoutSecs`|`540`|`60`|
 |`QueueMaxReceiveCount`|`160`|`30`|
 |&rarr; _Equivalent time_|_24 hours_|_30 minutes_|
 
@@ -470,14 +471,16 @@ my own
 Stay-Stopped requires only one Lambda function, but inserts an SQS queue
 between EventBridge and Lambda. Waiting occurs outside the Lambda function.
 SQS counts up toward a
+[first-time message delivery delay](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-delay-queues.html).
+Later, SQS counts up toward a
 [message [in]visibility timeout](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html),
 making it possible to periodically retry the Lambda function, with the
 original EventBridge event message, until the return value indicates success.
 If
 [maxReceiveCount](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html#policies-for-dead-letter-queues)
 is reached instead, SQS gives up and moves the message to a dead letter queue.
-Between the [in]visibility timeout and the receive count, SQS maintains all
-the state that's needed.
+Between the first-time delivery delay, the [in]visibility timeout, and the
+receive count, SQS maintains all the state that's needed.
 
 Given that the Lambda function receives the _original_ event message again
 and again, how does Stay-Stopped track the database's progress from `starting`
@@ -485,6 +488,13 @@ to `available` (the only status from which it can be stopped) and then to
 `stopped` (or another final status)? It doesn't. One idempotent Lambda
 function does the same thing each time it's invoked, avoiding the need for a
 Step Function state machine.
+
+> Interestingly, the RDS API is eventually consistent, not strongly consistent.
+After RDS emits a "DB cluster is being started" or "DB instance is being
+started" event, `stop_db_cluster` or `stop_db_instance` and
+`describe_db_instances` might still see the database's stale `stopped` status
+rather than its current `starting` status. The first-time message delivery
+delay has been added for this reason.
 
 Each time the Lambda function is invoked, it tries to stop the database by
 calling `stop_db_cluster` (for an Aurora event) or `stop_db_instance` (for
