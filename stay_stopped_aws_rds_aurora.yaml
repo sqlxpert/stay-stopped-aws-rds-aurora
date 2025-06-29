@@ -69,14 +69,25 @@ Parameters:
       - "false"
       - "true"
 
+  QueueDelaySecs:
+    Type: Number
+    Description: >-
+      How many seconds to wait before delivering a forced database start event
+      message for the first time. The default, 540 seconds or 9 minutes, allows
+      a stop attempt as late as possible within the 10-minute minimum billing
+      period after a database starts. Reduce for for testing.
+      See
+      https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-delay-queues.html
+    MinValue: 0
+    MaxValue: 900
+    Default: 540
+
   QueueVisibilityTimeoutSecs:
     Type: Number
     Description: >-
       How many seconds between attempts to stop a database. This must be
       greater than LambdaFnTimeoutSecs . The default, 540 seconds or 9
-      minutes, allows a second stop attempt as late as possible within the
-      10-minute minimum billing period after a database starts. Reduce for
-      for testing.
+      minutes, is the same as for QueueDelaySecs . Reduce for for testing.
     Default: 540
 
   QueueMaxReceiveCount:
@@ -253,6 +264,7 @@ Metadata:
       - Label:
           default: SQS queues for forced database start events and errors
         Parameters:
+          - QueueDelaySecs
           - QueueVisibilityTimeoutSecs
           - QueueMaxReceiveCount
           - ErrorQueueMessageRetentionPeriodSecs
@@ -286,6 +298,8 @@ Metadata:
         default: Do not change the parameters below, unless necessary!
       Test:
         default: Test mode?
+      QueueDelaySecs:
+        default: Seconds before first attempt to stop a database
       QueueVisibilityTimeoutSecs:
         default: Seconds between attempts to stop a database
       QueueMaxReceiveCount:
@@ -686,7 +700,6 @@ Resources:
   MainQueue:
     Type: AWS::SQS::Queue
     Properties:
-      DelaySeconds: 0
       SqsManagedSseEnabled: !If [ SqsKmsKeyBlank, true, false ]
       KmsMasterKeyId:
         Fn::If:
@@ -699,25 +712,23 @@ Resources:
       KmsDataKeyReusePeriodSeconds:
         !If [ SqsKmsKeyBlank, !Ref AWS::NoValue, 86400 ]  # seconds (24 hours)
       MaximumMessageSize: !Ref QueueMessageBytesMax
-
-      MessageRetentionPeriod: !Ref ErrorQueueMessageRetentionPeriodSecs
-      # Well before, messages will have been processed or deemed expired --
-      # search "expired(" -- by LambdaFn code, and deleted; or moved to the
-      # error (dead letter) queue after QueueMaxReceiveCount tries
-      # (time: QueueMaxReceiveCount * QueueVisibilityTimeoutSecs).
-
       ReceiveMessageWaitTimeSeconds: 20  # long polling (lowest cost)
+      DelaySeconds: !Ref QueueDelaySecs
       VisibilityTimeout: !Ref QueueVisibilityTimeoutSecs
       RedrivePolicy:
         maxReceiveCount: !Ref QueueMaxReceiveCount
         deadLetterTargetArn: !GetAtt ErrorQueue.Arn
       RedriveAllowPolicy:
         redrivePermission: denyAll
+      MessageRetentionPeriod: !Ref ErrorQueueMessageRetentionPeriodSecs
+      # Well before, messages will have been processed or deemed expired --
+      # search "expired(" -- by LambdaFn code, and deleted; or moved to the
+      # error (dead letter) queue after QueueMaxReceiveCount tries
+      # (time: QueueMaxReceiveCount * QueueVisibilityTimeoutSecs).
 
   ErrorQueue:
     Type: AWS::SQS::Queue
     Properties:
-      DelaySeconds: 0
       SqsManagedSseEnabled: !If [ SqsKmsKeyBlank, true, false ]
       KmsMasterKeyId:
         Fn::If:
@@ -733,9 +744,10 @@ Resources:
       MaximumMessageSize: !Ref QueueMessageBytesMax
       # Consider all sources of messages, not just MainQueue!
 
-      MessageRetentionPeriod: !Ref ErrorQueueMessageRetentionPeriodSecs
       ReceiveMessageWaitTimeSeconds: 20  # long polling (lowest cost)
+      DelaySeconds: 0
       VisibilityTimeout: 0  # seconds; dead message retries don't make sense
+      MessageRetentionPeriod: !Ref ErrorQueueMessageRetentionPeriodSecs
 
   LambdaFnLogGrp:
     Type: AWS::Logs::LogGroup
