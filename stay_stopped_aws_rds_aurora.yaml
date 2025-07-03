@@ -372,10 +372,6 @@ Resources:
             - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${LambdaFnRoleAttachLocalPolicyName}"
       Policies:
 
-        # In-line policies apply only to one role, which can only be assumed
-        # by AWS Lambda functions. Separate, "managed" policies could be
-        # attached to other roles or users, allowing permission escalation.
-
         - PolicyName: CloudWatchLogsCreateLogGroupIfDeleted
           PolicyDocument:
             Version: "2012-10-17"
@@ -412,17 +408,28 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:*"
                   - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:cluster:*"
 
+        # JSON, so that an "aws:ResourceTag/tag-key" condition could be built
+        # up with substitutions, in the future. CloudFormation requires literal
+        # string keys, so !Sub "aws:ResourceTag/${TagKey}": "*" would give an
+        # "Unhashable type" error.
         - PolicyName: RdsWrite
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - rds:StopDBInstance
-                  - rds:StopDBCluster
-                Resource:
-                  - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:*"
-                  - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:cluster:*"
+          PolicyDocument: !Sub
+            - >-
+              {
+                "Version": "2012-10-17",
+                "Statement": [{
+                  "Effect": "Allow",
+                  "Action": [
+                    "rds:StopDBInstance",
+                    "rds:StopDBCluster"
+                  ],
+                  "Resource": [
+                    "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:*",
+                    "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:cluster:*"
+                  ]
+                }]
+              }
+            - PlaceholderKeyForFutureUse: PlaceholderValueForFutureUse
 
         - Fn::If:
             - SqsKmsKeyCustom
@@ -469,8 +476,7 @@ Resources:
             Condition:
               ArnEquals:
                 "aws:SourceArn":
-                  - !GetAtt AuroraDbForcedStartToMainQueueRule.Arn
-                  - !GetAtt RdsDbForcedStartToMainQueueRule.Arn
+                  - !GetAtt DbForcedStartToMainQueueRule.Arn
 
           - Fn::If:
               - TestTrue
@@ -483,8 +489,7 @@ Resources:
                 Condition:
                   ArnNotEquals:
                     "aws:SourceArn":
-                      - !GetAtt AuroraDbForcedStartToMainQueueRule.Arn
-                      - !GetAtt RdsDbForcedStartToMainQueueRule.Arn
+                      - !GetAtt DbForcedStartToMainQueueRule.Arn
 
           - Sid:
               Fn::If:
@@ -563,8 +568,7 @@ Resources:
             Condition:
               ArnEquals:
                 "aws:SourceArn":
-                  - !GetAtt AuroraDbForcedStartToMainQueueRule.Arn
-                  - !GetAtt RdsDbForcedStartToMainQueueRule.Arn
+                  - !GetAtt DbForcedStartToMainQueueRule.Arn
           - Sid:
               Fn::If:
                 - SqsKmsKeyCustom
@@ -586,8 +590,7 @@ Resources:
             Condition:
               ArnNotEquals:
                 "aws:SourceArn":
-                  - !GetAtt AuroraDbForcedStartToMainQueueRule.Arn
-                  - !GetAtt RdsDbForcedStartToMainQueueRule.Arn
+                  - !GetAtt DbForcedStartToMainQueueRule.Arn
                   - !GetAtt MainQueue.Arn
 
   # Administrator: Block other invocation mechanisms
@@ -600,94 +603,77 @@ Resources:
       SourceArn: !GetAtt MainQueue.Arn
       FunctionName: !Ref LambdaFn
 
-  AuroraDbForcedStartToMainQueueRule:
+  # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.cluster
+  # - RDS-EVENT-0153 "DB cluster is being started due to it exceeding the
+  #   maximum allowed time being stopped."
+  # - RDS-EVENT-0151 "DB cluster started." (testing)
+  #
+  # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
+  # - RDS-EVENT-0154 "DB instance is being started due to it exceeding the
+  #   maximum allowed time being stopped."
+  # - RDS-EVENT-0088 "DB instance started." (testing)
+  #   Warning: Aurora database instances have an event that is
+  #   indistinguishable at this level. Lambda function ignores it.
+  #
+  # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#USER_Events.Messages.instance
+
+  DbForcedStartToMainQueueRule:
     Type: AWS::Events::Rule
     Properties:
-      Description:
-        Fn::If:
-          - TestTrue
-          - !Sub >-
-              RDS-EVENT-0153 forced Aurora database cluster start after 7
-              days,
-              plus RDS-EVENT-0151 non-forced start for TEMPORARY TESTING,
-              to ${MainQueue.QueueName}
-          - !Sub >-
-              RDS-EVENT-0153 forced Aurora database cluster start after 7
-              days,
-              to ${MainQueue.QueueName}
-      EventPattern:
-        source: [ aws.rds ]
-        detail-type: [ RDS DB Cluster Event ]
-        detail:
-          EventID:
-
-            - RDS-EVENT-0153
-            # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0153
-            # "DB cluster is being started due to it exceeding the maximum
-            # allowed time being stopped."
-
-            - !If [ TestTrue, RDS-EVENT-0151, !Ref AWS::NoValue ]
-            # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0151
-            # "DB cluster started."
-
-          SourceType: [ CLUSTER ]
-          SourceIdentifier:
-            - anything-but:
-                - ""
-                # https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1378
-                # - null
-        version: [ "0" ]
-      Targets:
-        - Id: !GetAtt MainQueue.QueueName
-          Arn: !GetAtt MainQueue.Arn
-          RetryPolicy:
-            MaximumRetryAttempts: 10
-            MaximumEventAgeInSeconds: 300  # 5 minutes
-          DeadLetterConfig: { Arn: !GetAtt ErrorQueue.Arn }
-      State: !If [ EnableTrue, ENABLED, DISABLED ]
-
-  RdsDbForcedStartToMainQueueRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Description:
-        Fn::If:
-          - TestTrue
-          - !Sub >-
-              RDS-EVENT-0154 forced RDS database instance start after 7 days,
-              plus RDS-EVENT-0088 non-forced start (ignored for instances in
-              Aurora clusters) for TEMPORARY TESTING,
-              to ${MainQueue.QueueName}
-          - !Sub >-
-              RDS-EVENT-0154 forced RDS database instance start after 7 days,
-              to ${MainQueue.QueueName}
-      EventPattern:
-        source: [ aws.rds ]
-        detail-type: [ RDS DB Instance Event ]
-        detail:
-          EventID:
-
-            - RDS-EVENT-0154
-            # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0154
-            # "DB instance is being started due to it exceeding the maximum
-            # allowed time being stopped."
-
-            - !If [ TestTrue, RDS-EVENT-0088, !Ref AWS::NoValue ]
-            # https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html#RDS-EVENT-0088
-            # "DB instance started."
-            #
-            # Warning: Aurora database instances have an event that is
-            # indistinguishable at this level. The Lambda function ignores it,
-            # in assess_db_invalid_parameter .
-            # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_Events.Messages.html#RDS-EVENT-0088
-            # "DB instance started."
-
-          SourceType: [ DB_INSTANCE ]
-          SourceIdentifier:
-            - anything-but:
-                - ""
-                # https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1378
-                # - null
-        version: [ "0" ]
+      Description: !Sub
+        - >-
+          Database start:
+          forced after 7 days:
+          RDS-EVENT-0153 (Aurora cluster),
+          RDS-EVENT-0154 (RDS instance)${TestDescription}
+          to ${MainQueue.QueueName}
+        - TestDescription: !If
+            - TestTrue
+            - >-
+              ; non-forced TEMPORARY TESTING:
+              RDS-EVENT-0151 (Aurora cluster),
+              RDS-EVENT-0088 (instance, ignored for Aurora);
+            - ""
+      EventPattern: !Sub
+        - >-
+          {
+            "version": [ "0" ],
+            "source": [ "aws.rds" ],
+            "detail": {
+              "SourceIdentifier": [ { "anything-but": [ "" ] } ],
+              "Date": [ { "anything-but": [ "" ] } ]
+            },
+            "$or": [
+              {
+                "detail-type": [ "RDS DB Cluster Event" ],
+                "detail": {
+                  "SourceType": [ "CLUSTER" ],
+                  "EventID": [ "RDS-EVENT-0153"${AuroraTestEvent} ]
+                }
+              },
+              {
+                "detail-type": [ "RDS DB Instance Event" ],
+                "detail": {
+                  "SourceType": [ "DB_INSTANCE" ],
+                  "EventID": [ "RDS-EVENT-0154"${RdsTestEvent} ]
+                }
+              }
+            ]
+          }
+        - AuroraTestEvent: !If
+            - TestTrue
+            - ', "RDS-EVENT-0151"'
+            - ""
+          RdsTestEvent: !If
+            - TestTrue
+            - ', "RDS-EVENT-0088"'
+            - ""
+      # Would prefer "anything-but": [ "", null ] . JSON EventPattern resolves:
+      # https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1378
+      # but another limitation remains: "Event pattern is not valid. Reason:
+      # Inside anything but list, start|null|boolean is not supported."
+      # Handy for testing:
+      # https://console.aws.amazon.com/events/home#/explore
       Targets:
         - Id: !GetAtt MainQueue.QueueName
           Arn: !GetAtt MainQueue.Arn
