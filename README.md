@@ -921,6 +921,7 @@ application.
     }
   }
 }
+```
 
 When I added ABAC to the Stay-Stopped Lambda function role, I took the
 liberty of using the same declarative CloudFormation code to condition the
@@ -928,7 +929,6 @@ event rule on database tags. I was able to add support for a parameterized
 exclusion tag, a parameterized inclusion tag, a mix of both (databases
 explicitly included, and some explicitly excluded), or no tags. There is no
 need to add or change Lambda function Python code to support tags.
-```
 
 #### Leaving a Bug for Later
 
