@@ -447,10 +447,10 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:*"
                   - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:cluster:*"
 
-        # JSON, so that an "aws:ResourceTag/tag-key" condition could be built
-        # up with substitutions, in the future. CloudFormation requires literal
-        # string keys, so !Sub "aws:ResourceTag/${TagKey}": "*" would give an
-        # "Unhashable type" error.
+        # JSON, because CloudFormation requires literal string keys.
+        # !Sub "aws:ResourceTag/${TagKey}": "*"
+        # would give an "Unhashable type" error.
+        # Empty "Condition": {} is OK.
         - PolicyName: RdsWrite
           PolicyDocument: !Sub
             - >-
