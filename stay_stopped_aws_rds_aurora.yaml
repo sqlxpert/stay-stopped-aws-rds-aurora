@@ -50,6 +50,31 @@ Parameters:
     AllowedValues:
       - ""
 
+  ExcludeTagKey:
+    Type: String
+    Description: >-
+      An RDS database instance or Aurora database cluster with this tag will
+      not be stopped.
+      Specify only the tag key; tag values are ignored.
+      If ExcludeTagKey and IncludeTagKey are both blank, the Lambda function
+      role has permission to stop any database (though the Lambda function is
+      only triggered for databases that have already been stopped for 7 days).
+      The default is "StayStopped-Exclude".
+      For tag key rules, see
+      https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Tagging.html#Overview.Tagging.Structure
+    Default: "StayStopped-Exclude"
+
+  IncludeTagKey:
+    Type: String
+    Description: >-
+      An RDS database instance or Aurora database cluster without this tag will
+      not be stopped.
+      By default, this is blank and no database tag is required.
+      If a database has both the ExcludeTagKey and the IncludeTagKey, it will
+      not be stopped; exclusion wins.
+      See ExcludeTagKey for other important details.
+    Default: ""
+
   Test:
     Type: String
     Description: >-
@@ -258,6 +283,11 @@ Metadata:
         Parameters:
           - PlaceholderAdvancedParameters
       - Label:
+          default: Database tags
+        Parameters:
+          - ExcludeTagKey
+          - IncludeTagKey
+      - Label:
           default: Testing
         Parameters:
           - Test
@@ -296,6 +326,10 @@ Metadata:
         default: Follow the database after a stop request?
       PlaceholderAdvancedParameters:
         default: Do not change the parameters below, unless necessary!
+      ExcludeTagKey:
+        default: Do not stop an eligible database if it has this tag
+      IncludeTagKey:
+        default: Stop an eligible database only if it has this tag
       Test:
         default: Test mode?
       QueueDelaySecs:
@@ -334,6 +368,11 @@ Conditions:
   EnableTrue: !Equals [ !Ref Enable, "true" ]
 
   FollowUntilStoppedTrue: !Equals [ !Ref FollowUntilStopped, "true" ]
+
+  ExcludeTagKeySet: !Not [ !Equals [ !Ref ExcludeTagKey, "" ] ]
+  IncludeTagKeySet: !Not [ !Equals [ !Ref IncludeTagKey, "" ] ]
+  ExcludeTagKeySetOrIncludeTagKeySet:
+    !Or [ !Condition ExcludeTagKeySet, !Condition IncludeTagKeySet ]
 
   TestTrue: !Equals [ !Ref Test, "true" ]
 
@@ -408,10 +447,10 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:*"
                   - !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:cluster:*"
 
-        # JSON, so that an "aws:ResourceTag/tag-key" condition could be built
-        # up with substitutions, in the future. CloudFormation requires literal
-        # string keys, so !Sub "aws:ResourceTag/${TagKey}": "*" would give an
-        # "Unhashable type" error.
+        # JSON, because CloudFormation requires literal string keys.
+        # !Sub "aws:ResourceTag/${TagKey}": "*"
+        # would give an "Unhashable type" error.
+        # Empty "Condition": {} is OK.
         - PolicyName: RdsWrite
           PolicyDocument: !Sub
             - >-
@@ -426,10 +465,29 @@ Resources:
                   "Resource": [
                     "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:*",
                     "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:cluster:*"
-                  ]
+                  ],
+                  "Condition": {
+              ${TagConditions}
+                  }
                 }]
               }
-            - PlaceholderKeyForFutureUse: PlaceholderValueForFutureUse
+            - TagConditions: !Join
+                - |
+                  ,
+                - - !If
+                    - ExcludeTagKeySet
+                    - !Sub |-
+                        "StringNotLike": {
+                          "aws:ResourceTag/${ExcludeTagKey}": "*"
+                        }
+                    - !Ref AWS::NoValue
+                  - !If
+                    - IncludeTagKeySet
+                    - !Sub |-
+                        "StringLike": {
+                          "aws:ResourceTag/${IncludeTagKey}": "*"
+                        }
+                    - !Ref AWS::NoValue
 
         - Fn::If:
             - SqsKmsKeyCustom
@@ -641,7 +699,7 @@ Resources:
             "source": [ "aws.rds" ],
             "detail": {
               "SourceIdentifier": [ { "anything-but": [ "" ] } ],
-              "Date": [ { "anything-but": [ "" ] } ]
+              "Date": [ { "anything-but": [ "" ] } ]${DetailTagsKey}
             },
             "$or": [
               {
@@ -660,13 +718,28 @@ Resources:
               }
             ]
           }
-        - AuroraTestEvent: !If
-            - TestTrue
-            - ', "RDS-EVENT-0151"'
-            - ""
-          RdsTestEvent: !If
-            - TestTrue
-            - ', "RDS-EVENT-0088"'
+        - AuroraTestEvent: !If [ TestTrue, ', "RDS-EVENT-0151"', "" ]
+          RdsTestEvent: !If [ TestTrue, ', "RDS-EVENT-0088"', "" ]
+          DetailTagsKey: !If
+            - ExcludeTagKeySetOrIncludeTagKeySet
+            - !Sub
+              - |-
+                  ,
+                  "Tags": {
+                    ${DetailTagsValue}
+                  }
+              - DetailTagsValue: !Join
+                  - ', '
+                  - - !If
+                      - ExcludeTagKeySet
+                      - !Sub |-
+                          "${ExcludeTagKey}": [ { "exists": false } ]
+                      - !Ref AWS::NoValue
+                    - !If
+                      - IncludeTagKeySet
+                      - !Sub |-
+                          "${IncludeTagKey}": [ { "exists": true } ]
+                      - !Ref AWS::NoValue
             - ""
       # Would prefer "anything-but": [ "", null ] . JSON EventPattern resolves:
       # https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/1378

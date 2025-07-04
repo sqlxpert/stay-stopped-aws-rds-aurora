@@ -215,6 +215,14 @@ entirely at your own risk. You are encouraged to review the source code.
   denying authority to stop certain production databases (`AttachLocalPolicy`
   in CloudFormation).
 
+  - Tagging an RDS database instance or an Aurora database cluster with
+    `StayStopped-Exclude` (see `ExcludeTagKey` in CloudFormation) prevents the
+    Lambda function role from being misused to stop that database.
+    &#9888; Do not rely on
+    [attribute-based access control](https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction_attribute-based-access-control.html)
+    unless you also prevent people and systems from adding, changing and
+    deleting ABAC tags.
+
 - Enable the test mode only in a non-critical AWS account and region, and turn
   the test mode off again as quickly as possible.
 
@@ -826,14 +834,13 @@ a `stop_db_instance` call bracketed by "Stopping RDS instance" and
 When the goal is to stop databases that had already been stopped for 7 days,
 tags cannot add any information. A previously stopped database is included,
 thanks to `RDS-EVENT-0154`. A continuously running database is excluded,
-because no event is generated for it. (The only benefit of tags would be
+because no event is generated for it. (The only benefit of tags is
 [attribute-based access control](https://aws.amazon.com/identity/attribute-based-access-control/),
 which is far beyond the level of solutions typically found on the Internet or
 initially proposed by Amazon Q Developer.
-[github.com/sqlxpert/lights-off-aws uses ABAC](https://github.com/sqlxpert/lights-off-aws/blob/8e45026/cloudformation/lights_off_aws.yaml#L679-L687).
-To implement ABAC for Stay-Stopped, you can write a customer-managed IAM
-policy and set `LambdaFnRoleAttachLocalPolicyName`. Unless you universally
-restrict the right to add, change and delete ABAC tags, the policy is moot.)
+[github.com/sqlxpert/lights-off-aws uses ABAC](https://github.com/sqlxpert/lights-off-aws/blob/8e45026/cloudformation/lights_off_aws.yaml#L679-L687)
+and I've added it to Stay-Stopped as well. It's moot unless you broadly
+restrict the right to add, change and delete ABAC tags.)
 
 According to Amazon Q Developer, "The final solution represents a robust,
 production-ready approach that properly handles the complexities of keeping
@@ -915,6 +922,13 @@ application.
   }
 }
 ```
+
+When I added ABAC to the Stay-Stopped Lambda function role, I took the
+liberty of using the same declarative CloudFormation code to condition the
+event rule on database tags. I was able to add support for a parameterized
+exclusion tag, a parameterized inclusion tag, a mix of both (databases
+explicitly included, and some explicitly excluded), or no tags. There is no
+need to add or change Lambda function Python code to support tags.
 
 #### Leaving a Bug for Later
 
