@@ -1042,9 +1042,8 @@ Thank you to:
 - Andrew, who asked the question that led me to develop Stay-Stopped. User
   feedback matters!
 - shimo and Islam Ghanim, developers who open-sourced alternative solutions.
-- Corey, who shared Stay-Stopped with the AWS user community in _Last Week in
-  AWS_ newsletter issue
-  427 (June 16, 2025).
+- Corey, who shared Stay-Stopped with the community in
+  [_Last Week in AWS Newsletter_ issue 427 (June 16, 2025)](https://www.lastweekinaws.com/newsletter/aws-whats-new-got-old#h-tools).
 
 ## Licenses
 
