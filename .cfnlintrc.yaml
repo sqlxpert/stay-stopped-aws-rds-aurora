@@ -6,3 +6,10 @@ ignore_checks:
   - W2510
   # W2510: Lambda Memory Size parameters should use MinValue, MaxValue or
   #        AllowedValues: See comment about "underlying APIs"
+  # - E3002
+  # # E3002: Additional properties are not allowed ('DeletionPolicy' was
+  # #        unexpected)
+  # #
+  # #        Mentioned for awareness of a potential cfn-lint bug.
+  # #        DeletionPolicy should be allowed for any resource, per:
+  # #        https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-attribute-deletionpolicy.html
