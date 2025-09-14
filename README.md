@@ -383,8 +383,8 @@ parameter. In the Lambda function's "Test" tab, the test event will appear in
 the "Event name" pop-up menu, in the "Shareable saved events" section, as
 `RdsAndAurora_EditFirst`&nbsp;.
 
-You can also create private or shareable test events independently, by
-copying the JSON object below.
+Regardless of the opt-in, you can create private as well as shareable test
+events independently, by copying the JSON object below.
 
 Whether you use the provided shareable test event or create your own private or
 shareable test events, you must edit the database name(s) and the date/time

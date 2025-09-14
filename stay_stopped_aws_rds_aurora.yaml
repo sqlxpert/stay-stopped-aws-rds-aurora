@@ -81,7 +81,7 @@ Parameters:
       Whether to admit Aurora database cluster and RDS database instance
       non-forced start events for temporary testing, and relax the queue
       policy for the main SQS queue so that users can send, read, and delete
-      messages, for example, using the AWS Console or the AWS ClI.
+      messages, for example, using the AWS Console or the AWS CLI.
       Tips:
       Temporarily reducing QueueVisibilityTimeoutSecs and
       QueueMaxReceiveCount , and changing LogLevel to "INFO", also facilitates
@@ -170,15 +170,13 @@ Parameters:
   CreateLambdaTestEvents:
     Type: String
     Description: >-
-      Whether to create a shareable test event for the StayStopped AWS Lambda
-      function. The default, "false", does not create the test event. Instead,
-      you can create private as well as shareable test events independently, by
-      copying the JSON object from the "Test by Invoking the Lambda Function"
-      subsection of
-      https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#testing
-      . Before you change this value to "true", delete any
-      independently-created shareable test events for the function and see
-      CreateLambdaTestEventSchemaRegistry
+      Whether to create the shareable test event(s) for the StayStopped AWS
+      Lambda function. The default, "false", does not create them.
+      Before you change this value to "true", delete any independently-created
+      shareable test events for the function and see
+      CreateLambdaTestEventSchemaRegistry . In
+      https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#testing , see
+      "Test by Invoking the Lambda Function".
     Default: "false"
     AllowedValues:
       - "false"
