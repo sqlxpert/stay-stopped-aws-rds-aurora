@@ -299,6 +299,7 @@ these parameters in CloudFormation:
 |`QueueVisibilityTimeoutSecs`|`540`|`60`|
 |`QueueMaxReceiveCount`|`160`|`30`|
 |&rarr; _Equivalent time_|_24 hours_|_30 minutes_|
+|`CreateLambdaTestEvents`|`false`|`true` _if&nbsp;desired_|
 
 **&#9888; Exit test mode as quickly as possible**, given the operational and
 security risks explained below. If your test database is ready, several minutes
@@ -377,18 +378,19 @@ manually.
 
 A
 [Lambda shareable test event](https://docs.aws.amazon.com/lambda/latest/dg/testing-functions.html#creating-shareable-events)
-is provided. To opt-in, see the `CreateLambdaTestEvents` CloudFormation
+is provided. To opt in, see the `CreateLambdaTestEvents` CloudFormation
 parameter. In the Lambda function's "Test" tab, the test event will appear in
-the "Event name" pop-up menu, in the "Shareable saved events" section. Its name
-will be `RdsAndAurora_EditFirst`&nbsp;.
+the "Event name" pop-up menu, in the "Shareable saved events" section, as
+`RdsAndAurora_EditFirst`&nbsp;.
 
 You can also create private or shareable test events independently, by
 copying the JSON object below.
 
 Whether you use the provided shareable test event or create your own private or
 shareable test events, you must edit the database name(s) and the date/time
-string(s). The data/time must be within the past `QueueMaxReceiveCount`
-&times; `QueueVisibilityTimeoutSecs` and end in `Z` for
+string(s). The date/time string(s) must be within the past
+`QueueMaxReceiveCount`&nbsp;&times;&nbsp;`QueueVisibilityTimeoutSecs`
+(24&nbsp;hours, by default) and must end in `Z` for
 [UTC](https://www.timeanddate.com/worldclock/timezone/utc)).
 
 ```json

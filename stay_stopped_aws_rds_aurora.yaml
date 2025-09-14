@@ -171,18 +171,15 @@ Parameters:
   CreateLambdaTestEvents:
     Type: String
     Description: >-
-      Whether to create shareable test events for the Lambda function. The
-      default, "false", does not create  shareable test events. Instead, you
-      can create private or shareable test events independently, by copying and
-      pasting JSON objects from
+      Whether to create a shareable test event for the StayStopped AWS Lambda
+      function. The default, "false", does not create the test event. Instead,
+      you can create private as well as shareable test events independently, by
+      copying the JSON object from the "Test by Invoking the Lambda Function"
+      subsection of
       https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#testing
-      according to the instruction in
-      https://docs.aws.amazon.com/lambda/latest/dg/testing-functions.html
       . Before you change this value to "true", delete any
-      independently-created shareable test events for the StayStopped Lambda
-      function and see CreateLambdaTestEventSchemaRegistry .
-      For general information, see
-      https://aws.amazon.com/about-aws/whats-new/2022/03/aws-lambda-console-test-events
+      independently-created shareable test events for the function and see
+      CreateLambdaTestEventSchemaRegistry
     Default: "false"
     AllowedValues:
       - "false"
@@ -191,22 +188,20 @@ Parameters:
   CreateLambdaTestEventSchemaRegistry:
     Type: String
     Description: >-
-      Whether to create the "lambda-testevent-schemas" EventBridge Schema
-      Registry, which houses shareable test events for all Lambda functions in
-      a given AWS account and region.
-      Keep the default value, "false", if CreateLambdaTestEvents also remains
-      "false" (and you do not want to create shareable test events
-      independently), or if this schema registry already exists (which will be
-      the case if a shareable test event has ever been created for any Lambda
-      function in the same AWS account and region as this stack).
-      Change the value to "true" if you also want to change
-      CreateLambdaTestEvents to "true" (or if you want to create shareable test
-      events independently) but this schema registry does not yet exist in the
-      same AWS account and region as this stack. If you also want to change
-      CreateLambdaTestEvents to "true", change that in a second stack/StackSet
-      update to prevent a potential timing error.
-      For a StackSet, you must make sure that the status of this schema
-      registry is the same in every target region in every target AWS account.
+      Whether to create the EventBridge schema registry that houses shareable
+      test events for all Lambda functions.
+      There is never any need to change this value from "true" back to "false".
+      Keep the default value, "false", if CreateLambdaTestEvents will remain
+      "false", or if the "lambda-testevent-schemas" schema registry already
+      exists (which will be the case if a shareable test event has ever been
+      created for any Lambda function in the same AWS account and region as
+      this stack).
+      Change the value to "true" before changing CreateLambdaTestEvents to
+      "true", if the "lambda-testevent-schemas" schema registry does not yet
+      exist in the same AWS account and region as this stack. (For a StackSet,
+      be sure that this schema registry is in the same state in every target
+      region and AWS account.) Next, change CreateLambdaTestEvents to "true" in
+      a separate stack update or StackSet deployment, to avoid a timing error.
     Default: "false"
     AllowedValues:
       - "false"
@@ -216,8 +211,8 @@ Parameters:
     Type: Number
     Description: >-
       How many batches of database start events can definitely be processed in
-      parallel. To decline access to AWS Lambda reserved concurrency, set this
-      to -1. See
+      parallel. To decline access to Lambda reserved concurrency, set this to
+      -1. See
       https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html#configuration-concurrency-reserved
     MinValue: -1
     Default: -1
@@ -903,6 +898,8 @@ Resources:
   LambdaTestEventSchema:
     Type: AWS::EventSchemas::Schema
     Condition: CreateLambdaTestEventsTrue
+    # DependsOn: LambdaTestEventSchemaRegistry is not allowed
+    # because LambdaTestEventSchemaRegistry is created conditionally.
     Properties:
       RegistryName: "lambda-testevent-schemas"
       SchemaName: !Sub "_${LambdaFn}-schema"
@@ -951,13 +948,14 @@ Resources:
             "examples": {
               "RdsAndAurora_EditFirst": {
                 "value": {
-                  "Step1DeleteRdsOrAuroraEntryIfNotNeeded": "",
-                  "Step2EditSourceIdentifier": "",
-                  "Step3AdvanceDateToWithinPast24Hours": "https://www.timeanddate.com/worldclock/timezone/utc",
-                  "Step4Test": "After editing, you can test even without saving the edited JSON.",
-                  "HelpSectionInReadMe": "https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#testing",
-                  "HelpSubsectionInReadMe": "https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#test-by-invoking-the-lambda-function",
-                  "HelpWithLambdaShareableTestEvents": "https://docs.aws.amazon.com/lambda/latest/dg/testing-functions.html#creating-shareable-events",
+                  "Step1": "Delete RDS or Aurora entry if not needed",
+                  "Step2": "Edit SourceIdentifier",
+                  "Step3a": "Edit Date to be within the past 24 hours",
+                  "Step3b": "https://www.timeanddate.com/worldclock/timezone/utc",
+                  "Step4": "After editing, you can test even without saving the edited JSON",
+                  "Help1a": "https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#testing",
+                  "Help1b": "https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#test-by-invoking-the-lambda-function",
+                  "Help2": "https://docs.aws.amazon.com/lambda/latest/dg/testing-functions.html#creating-shareable-events",
                   "Records": [
                     {
                       "body": "{ \"detail\": { \"SourceIdentifier\": \"Name-Of-Your-RDS-Database-Instance\", \"Date\": \"2025-06-06T04:30Z\", \"SourceType\": \"DB_INSTANCE\", \"EventID\": \"RDS-EVENT-0154\" }, \"detail-type\": \"RDS DB Instance Event\", \"source\": \"aws.rds\", \"version\": \"0\"}",
