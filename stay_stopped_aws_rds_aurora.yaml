@@ -178,12 +178,11 @@ Parameters:
       https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#testing
       according to the instruction in
       https://docs.aws.amazon.com/lambda/latest/dg/testing-functions.html
-      . If you change the value to "true", you must set
-      CreateLambdaTestEventSchemaRegistry correctly and make sure that any
+      . Before you change this value to "true", delete any
       independently-created shareable test events for the StayStopped Lambda
-      function have beend deleted. You will gain access to a standard shareable
-      test event. For general information, see
-      https://aws.amazon.com/about-aws/whats-new/2022/03/aws-lambda-console-test-events/
+      function and see CreateLambdaTestEventSchemaRegistry .
+      For general information, see
+      https://aws.amazon.com/about-aws/whats-new/2022/03/aws-lambda-console-test-events
     Default: "false"
     AllowedValues:
       - "false"
@@ -193,17 +192,19 @@ Parameters:
     Type: String
     Description: >-
       Whether to create the "lambda-testevent-schemas" EventBridge Schema
-      Registry, which houses shareable test events for all AWS Lambda functions
-      in a given AWS account and region.
+      Registry, which houses shareable test events for all Lambda functions in
+      a given AWS account and region.
       Keep the default value, "false", if CreateLambdaTestEvents also remains
       "false" (and you do not want to create shareable test events
       independently), or if this schema registry already exists (which will be
       the case if a shareable test event has ever been created for any Lambda
       function in the same AWS account and region as this stack).
-      Change the value to "true" if you change CreateLambdaTestEvents to
-      "true" (or you want to create shareable test events independently), and
-      this schema registry does not yet exist in the same AWS account and
-      region as this stack.
+      Change the value to "true" if you also want to change
+      CreateLambdaTestEvents to "true" (or if you want to create shareable test
+      events independently) but this schema registry does not yet exist in the
+      same AWS account and region as this stack. If you also want to change
+      CreateLambdaTestEvents to "true", change that in a second stack/StackSet
+      update to prevent a potential timing error.
       For a StackSet, you must make sure that the status of this schema
       registry is the same in every target region in every target AWS account.
     Default: "false"
@@ -893,8 +894,8 @@ Resources:
   LambdaTestEventSchemaRegistry:
     Type: AWS::EventSchemas::Registry
     Condition: CreateLambdaTestEventSchemaRegistryTrue
+    DeletionPolicy: Retain  # Shared by ALL Lambda functions!
     Properties:
-      DeletionPolicy: Retain  # Shared by ALL Lambda functions!
       RegistryName: "lambda-testevent-schemas"
       Description: !Ref AWS::NoValue  # Conforms with Lambda-generated registry
 
