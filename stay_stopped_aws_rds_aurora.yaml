@@ -85,8 +85,7 @@ Parameters:
       Tips:
       Temporarily reducing QueueVisibilityTimeoutSecs and
       QueueMaxReceiveCount , and changing LogLevel to "INFO", also facilitates
-      testing. See CreateLambdaTestEvents and
-      CreateLambdaTestEventSchemaRegistry as well.
+      testing. See CreateLambdaTestEvents as well.
       WARNING:
       Setting this to "true" causes any Aurora database cluster or RDS
       database instance to be stopped as soon as it is started.
