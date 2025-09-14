@@ -391,7 +391,7 @@ shareable test events, you must edit the database name(s) and the date/time
 string(s). The date/time string(s) must be within the past
 `QueueMaxReceiveCount`&nbsp;&times;&nbsp;`QueueVisibilityTimeoutSecs`
 (24&nbsp;hours, by default) and must end in `Z` for
-[UTC](https://www.timeanddate.com/worldclock/timezone/utc)).
+[UTC](https://www.timeanddate.com/worldclock/timezone/utc).
 
 ```json
 {
