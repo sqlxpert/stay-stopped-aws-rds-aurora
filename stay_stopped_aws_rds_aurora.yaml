@@ -386,7 +386,7 @@ Metadata:
       CreateLambdaTestEvents:
         default: Create shareable test events
       CreateLambdaTestEventSchemaRegistry:
-        default: If necessary, create schema registry for shareable test events
+        default: Create schema registry for shareable test events
       LambdaFnReservedConcurrentExecutions:
         default: Number of reserved parallel operations
       LambdaFnMaximumConcurrency:
@@ -433,7 +433,6 @@ Conditions:
 
   CreateLambdaTestEventsTrue:
     !Equals [ !Ref CreateLambdaTestEvents, "true" ]
-
   CreateLambdaTestEventSchemaRegistryTrue:
     !Equals [ !Ref CreateLambdaTestEventSchemaRegistry, "true" ]
 
