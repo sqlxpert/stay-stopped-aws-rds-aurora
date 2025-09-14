@@ -373,11 +373,23 @@ in these test messages:
 Depending on locally-determined permissions, you may also be able to invoke
 the
 [StayStopped Lambda function](https://console.aws.amazon.com/lambda/home#/functions?fo=and&o0=%3A&v0=StayStoppedRdsAurora-LambdaFn-)
-manually. Edit the database names and date/time strings (must be within the
-past `QueueMaxReceiveCount` &times; `QueueVisibilityTimeoutSecs` and end in `Z`
-for
-[UTC](https://www.timeanddate.com/worldclock/timezone/utc))
-in this Lambda test event:
+manually.
+
+A
+[Lambda shareable test event](https://docs.aws.amazon.com/lambda/latest/dg/testing-functions.html#creating-shareable-events)
+is provided. To opt-in, see the `CreateLambdaTestEvents` CloudFormation
+parameter. In the Lambda function's "Test" tab, the test event will appear in
+the "Event name" pop-up menu, in the "Shareable saved events" section. Its name
+will be `RdsAndAurora_EditFirst`&nbsp;.
+
+You can also create private or shareable test events independently, by
+copying the JSON object below.
+
+Whether you use the provided shareable test event or create your own private or
+shareable test events, you must edit the database name(s) and the date/time
+string(s). The data/time must be within the past `QueueMaxReceiveCount`
+&times; `QueueVisibilityTimeoutSecs` and end in `Z` for
+[UTC](https://www.timeanddate.com/worldclock/timezone/utc)).
 
 ```json
 {
