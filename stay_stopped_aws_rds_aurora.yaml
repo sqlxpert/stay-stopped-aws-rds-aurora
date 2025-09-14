@@ -951,10 +951,10 @@ Resources:
             "examples": {
               "RdsAndAurora_EditFirst": {
                 "value": {
-                  "1DeleteRdsOrAuroraEntryIfNotNeeded": "",
-                  "2EditSourceIdentifier": "",
-                  "3AdvanceDateToWithinPast24Hours": "https://www.timeanddate.com/worldclock/timezone/utc",
-                  "4Note": "After editing, you can test even without saving the edited JSON.",
+                  "Step1DeleteRdsOrAuroraEntryIfNotNeeded": "",
+                  "Step2EditSourceIdentifier": "",
+                  "Step3AdvanceDateToWithinPast24Hours": "https://www.timeanddate.com/worldclock/timezone/utc",
+                  "Step4Test": "After editing, you can test even without saving the edited JSON.",
                   "HelpSectionInReadMe": "https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#testing",
                   "HelpSubsectionInReadMe": "https://github.com/sqlxpert/stay-stopped-aws-rds-aurora#test-by-invoking-the-lambda-function",
                   "HelpWithLambdaShareableTestEvents": "https://docs.aws.amazon.com/lambda/latest/dg/testing-functions.html#creating-shareable-events",
