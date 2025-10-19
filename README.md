@@ -2,6 +2,18 @@
 
 _Reliably keep AWS databases stopped when not needed, to save money_
 
+## News
+
+As of October,&nbsp;2025, all further development will occur on the low-code,
+Step&nbsp;Function-based variant of this tool, at
+&rarr;&nbsp;[github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora).
+Terraform modules for single- and multi-account installation will soon be
+provided there.
+
+This repository will remain available so that people can compare an
+AWS&nbsp;Lambda-based solution and a Step Function, and because this ReadMe
+explains how the reliable procedure used in both solutions came to be.
+
 ## Purpose
 
 You can keep an EC2 compute instance stopped as long as you want, but it's not
@@ -34,11 +46,6 @@ Jump to:
 [Security](#security)
 
 ## Design
-
-_[**NEW!**
-[github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora)
-is a<wbr/>
-low-code, Step Function-based implementation of the same process.]_
 
 [<img src="media/stay-stopped-aws-rds-aurora-flow-simple.png" alt="After waiting 9 minutes, call to stop the Relational Database Service or Aurora database. Case 1: If the stop request succeeds, retry. Case 2: If the Aurora cluster is in an invalid state, parse the error message to get the status. Case 3: If the RDS instance is in an invalid state, get the status by calling to describe the RDS instance. Exit if the database status from Case 2 or 3 is 'stopped' or another final status. Otherwise, retry every 9 minutes, for 24 hours." width="325" />](media/stay-stopped-aws-rds-aurora-flow-simple.png?raw=true "Simplified flowchart for [Step-]Stay Stopped, RDS and Aurora!")
 
@@ -145,17 +152,9 @@ account. To deploy in multiple regions and/or multiple AWS accounts,
 
 ## Terraform
 
-Terraform users are often willing to wrap a CloudFormation stack in HashiCorp
-Configuration Language, because AWS supplies tools in the form of
-CloudFormation templates. See
-[aws_cloudformation_stack](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack)
-.
-
-Wrapping a CloudFormation StackSet in HCL is much easier than configuring and
-using Terraform to deploy and maintain identical resources in multiple regions
-and/or AWS accounts. See
-[aws_cloudformation_stack_set](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set)
-.
+Terraform modules for single- and multi-account installation will soon be
+bundled with the low-code, Step&nbsp;Function-based variant of this tool, at
+[github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora).
 
 ## Security
 
