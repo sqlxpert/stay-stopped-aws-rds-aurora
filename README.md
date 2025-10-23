@@ -5,14 +5,15 @@ _Reliably keep AWS databases stopped when not needed, to save money_
 ## News
 
 As of October,&nbsp;2025, all further development will occur on the low-code,
-Step&nbsp;Function-based variant of this tool, at
+Step&nbsp;Function-based variant at
 &rarr;&nbsp;[github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora).
-Terraform modules for single- and multi-account installation will soon be
-provided there.
+Terraform modules for single- and multi-account installation are provided
+there.
 
-This repository will remain available so that people can compare an
-AWS&nbsp;Lambda-based solution and a Step Function, and because this ReadMe
-explains how the reliable procedure used in both solutions came to be.
+This repository remains available so that people can compare an
+AWS&nbsp;Lambda-based solution and a Step&nbsp;Function, and because this
+ReadMe explains how the reliable database stop procedure used in both
+variants came to fruition.
 
 ## Purpose
 
