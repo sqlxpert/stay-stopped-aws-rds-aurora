@@ -4,8 +4,8 @@ _Reliably keep AWS databases stopped when not needed, to save money_
 
 ## News
 
-**&#9888; Deprecation Notice** From October,&nbsp;2025, all further development
-will occur on the low-code, Step&nbsp;Function-based variant at
+**&#9888; Deprecation Notice:** From October,&nbsp;2025, all further
+development will occur on the low-code, Step&nbsp;Function-based variant at
 [github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora)&nbsp;.
 Terraform modules, security enhancements, bug fixes, and corrections are
 provided there.
@@ -421,9 +421,9 @@ hidden controls such as Service and Resource control policies (SCPs and RCPs)
 
 ## Perspective
 
-[If you came here from an external link, be sure to go to
+[If you came here from an external link, go to
 [github.com/sqlxpert/**step**-stay-stopped-aws-rds-aurora](https://github.com/sqlxpert/step-stay-stopped-aws-rds-aurora#step-stay-stopped-rds-and-aurora)
-after you finish reading about its Lambda function-based predecessor.]
+after you finish reading about the Lambda function-based predecessor.]
 
 As noted in the Design section, many alternative solutions (including
 AI-generated ones from Amazon Q Developer) introduce a latent bug (a
